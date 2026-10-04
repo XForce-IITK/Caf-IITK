@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  jira-key:
+    name: Jira key in branch and PR title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name and PR title
+        env:
+          BRANCH: ${{ github.head_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='CAFIITK-[0-9]+'
+          fail=0
+          # develop -> main release PRs carry no issue key
+          if [ "$BRANCH" = "develop" ]; then
+            echo "Release PR from develop; skipping Jira key check."
+            exit 0
+          fi
+          if ! printf '%s' "$BRANCH" | grep -Eq "^${pattern}-"; then
+            echo "::error::Branch '$BRANCH' must be named CAFIITK-<issue>-<slug>."
+            fail=1
+          fi
+          if ! printf '%s' "$TITLE" | grep -Eq "^${pattern}: "; then
+            echo "::error::PR title must start with 'CAFIITK-<issue>: '."
+            fail=1
+          fi
+          exit $fail
