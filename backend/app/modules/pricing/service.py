@@ -37,44 +37,50 @@ class QuoteService:
 
     def quote(self, student: User, request: QuoteRequest) -> QuoteOut:
         with self.session.begin():
-            settings = self.repo.get_settings(
-                "P-MAX_QTY", "P-SUBSIDY_AMT_PAISE", "P-SUBSIDY_CAP_PCT"
-            )
-            max_qty = int(settings["P-MAX_QTY"])
-            if any(line.qty > max_qty for line in request.lines):
-                raise QuantityLimitError(max_qty)
+            return self.price(student, request)
 
-            slot = self.repo.get_slot(request.slot_id)
-            if slot is None:
-                raise SlotNotFoundError
+    def price(self, student: User, request: QuoteRequest) -> QuoteOut:
+        """Price inside the caller's transaction.
 
-            requested = [line.item_id for line in request.lines]
-            items = self.repo.get_active_items(requested)
-            missing = [item_id for item_id in requested if item_id not in items]
-            if missing:
-                raise UnknownItemsError(missing)
+        Order placement calls this after it holds its locks, so the order is priced
+        exactly as a quote taken at that moment would be (FR-26).
+        """
+        settings = self.repo.get_settings("P-MAX_QTY", "P-SUBSIDY_AMT_PAISE", "P-SUBSIDY_CAP_PCT")
+        max_qty = int(settings["P-MAX_QTY"])
+        if any(line.qty > max_qty for line in request.lines):
+            raise QuantityLimitError(max_qty)
 
-            cart = [
-                CartLine(
-                    item_id=line.item_id,
-                    category=items[line.item_id].category,
-                    unit_price_paise=items[line.item_id].price_paise,
-                    qty=line.qty,
-                )
-                for line in request.lines
-            ]
-            subsidy = SubsidyTerms(
-                eligible=student.subsidy_eligible,
-                already_used_today=self.repo.has_subsidised_order_on(student.id, slot.service_date),
-                amount_paise=int(settings["P-SUBSIDY_AMT_PAISE"]),
-                cap_pct=int(settings["P-SUBSIDY_CAP_PCT"]),
+        slot = self.repo.get_slot(request.slot_id)
+        if slot is None:
+            raise SlotNotFoundError
+
+        requested = [line.item_id for line in request.lines]
+        items = self.repo.get_active_items(requested)
+        missing = [item_id for item_id in requested if item_id not in items]
+        if missing:
+            raise UnknownItemsError(missing)
+
+        cart = [
+            CartLine(
+                item_id=line.item_id,
+                category=items[line.item_id].category,
+                unit_price_paise=items[line.item_id].price_paise,
+                qty=line.qty,
             )
-            breakdown = price_cart(
-                cart,
-                self.repo.get_active_rules(),
-                slot.starts_at.astimezone(IST).time(),
-                subsidy,
-            )
+            for line in request.lines
+        ]
+        subsidy = SubsidyTerms(
+            eligible=student.subsidy_eligible,
+            already_used_today=self.repo.has_subsidised_order_on(student.id, slot.service_date),
+            amount_paise=int(settings["P-SUBSIDY_AMT_PAISE"]),
+            cap_pct=int(settings["P-SUBSIDY_CAP_PCT"]),
+        )
+        breakdown = price_cart(
+            cart,
+            self.repo.get_active_rules(),
+            slot.starts_at.astimezone(IST).time(),
+            subsidy,
+        )
 
         return QuoteOut(
             slot_id=slot.id,
