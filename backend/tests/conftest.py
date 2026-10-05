@@ -20,6 +20,9 @@ from app.mockpay.main import create_app as create_mockpay_app
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 
+# A full-length signing key, so tests exercise JWTs as configured in production.
+os.environ.setdefault("CAF_JWT_SECRET", "test-secret-" + "x" * 32)
+
 # Colima (macOS) exposes Docker on a per-user socket; point testcontainers at it.
 _colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
 if "DOCKER_HOST" not in os.environ and _colima_socket.exists():
@@ -73,3 +76,18 @@ def db_client(engine: Engine) -> Iterator[TestClient]:
     yield TestClient(app)
     with engine.begin() as connection:
         connection.execute(text("TRUNCATE users CASCADE"))
+
+
+@pytest.fixture
+def configured_database(database_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Point the app's own settings, engine and sessionmaker at the test database."""
+    from app.core.config import get_settings
+    from app.db.session import get_engine, get_sessionmaker
+
+    monkeypatch.setenv("CAF_DATABASE_URL", database_url)
+    for cached in (get_settings, get_engine, get_sessionmaker):
+        cached.cache_clear()
+    yield
+    get_engine().dispose()
+    for cached in (get_settings, get_engine, get_sessionmaker):
+        cached.cache_clear()

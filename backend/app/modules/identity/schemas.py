@@ -39,3 +39,30 @@ class UserOut(BaseModel):
     name: str
     email: str
     role: Role
+
+
+def _normalise_email(value: str) -> str:
+    return value.strip().lower()
+
+
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Any domain: staff accounts need not be @iitk.ac.in. Unknown emails get the same 401.
+    email: Annotated[str, Field(min_length=1, max_length=254), AfterValidator(_normalise_email)]
+    password: Annotated[str, Field(min_length=1, max_length=128)]
+
+
+class RefreshRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: Annotated[str, Field(min_length=1, max_length=256)]
+
+
+class TokenPair(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int  # access-token lifetime in seconds
+    # The client opens this role's dashboard (FR-5).
+    role: Role
