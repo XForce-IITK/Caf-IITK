@@ -55,6 +55,22 @@ change needs a new column or table, add a new migration on top of the latest
 one (`alembic revision --autogenerate -m "..."`) and rebase on `develop` before
 merging so the migration history stays linear.
 
+### Payments
+
+Services call the payment provider only through `PaymentGateway`
+(`app/modules/payments/gateway.py`). Take it with
+`Depends(get_payment_gateway)`; it raises if the request's session still has a
+transaction open (NFR-6), so commit before calling it. Tests that do not need
+real HTTP can use `FakePaymentGateway`.
+
+`mockpay` approves every authorisation by default. To demonstrate a failure,
+set the outcome (not available when `CAF_ENV=production`):
+
+```sh
+curl -X PUT localhost:8001/_control/outcome -H 'content-type: application/json' \
+  -d '{"mode": "decline"}'      # or "timeout", or {"mode": "approve", "delay_ms": 3000}
+```
+
 ## Client development
 
 ```sh
