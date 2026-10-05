@@ -8,8 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.models.identity import User
 from app.modules.audit.service import write_audit
+from app.modules.slots.domain import not_bookable_reason
 from app.modules.slots.repository import SlotRepository
-from app.modules.slots.schemas import ServiceDayConfig, ServiceDayOut, SlotOut
+from app.modules.slots.schemas import (
+    ServiceDayConfig,
+    ServiceDayOut,
+    SlotAvailabilityOut,
+    SlotListOut,
+    SlotOut,
+)
 
 # Service windows and slot times are IST wall-clock (SRS Table 4.0-B).
 IST = ZoneInfo("Asia/Kolkata")
@@ -104,6 +111,32 @@ class SlotService:
             default_capacity=config.default_capacity,
             slots=[SlotOut.model_validate(s) for s in slots],
         )
+
+    def browse_slots(self, service_date: date, now: datetime) -> SlotListOut:
+        """FR-19 / US-16: the date's slots with remaining seats and whether each is bookable."""
+        with self.session.begin():
+            book_close_min = int(self.repo.get_setting("P-BOOK_CLOSE_MIN"))
+            slots = self.repo.list_for_date(service_date)
+        out = []
+        for slot in slots:
+            reason = not_bookable_reason(
+                capacity=slot.capacity,
+                booked=slot.booked,
+                starts_at=slot.starts_at,
+                now=now,
+                book_close_min=book_close_min,
+            )
+            out.append(
+                SlotAvailabilityOut(
+                    id=slot.id,
+                    starts_at=slot.starts_at,
+                    ends_at=slot.ends_at,
+                    remaining_seats=slot.capacity - slot.booked,
+                    bookable=reason is None,
+                    not_bookable_reason=reason,
+                )
+            )
+        return SlotListOut(service_date=service_date, slots=out)
 
 
 def _day_summary(

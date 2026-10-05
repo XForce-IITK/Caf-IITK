@@ -17,6 +17,13 @@ class SlotRepository:
     def get_setting(self, key: str) -> Any:
         return self.session.scalar(select(Setting.value).where(Setting.key == key))
 
+    def list_for_date(self, service_date: date) -> list[Slot]:
+        return list(
+            self.session.scalars(
+                select(Slot).where(Slot.service_date == service_date).order_by(Slot.starts_at)
+            )
+        )
+
     def lock_or_create_day(
         self,
         service_date: date,

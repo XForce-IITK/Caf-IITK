@@ -4,6 +4,8 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.slots.domain import NotBookableReason
+
 # FR-17: default seat capacity per slot.
 MIN_CAPACITY = 1
 MAX_CAPACITY = 100
@@ -44,3 +46,18 @@ class ServiceDayOut(BaseModel):
     slot_len_min: int
     default_capacity: int
     slots: list[SlotOut]
+
+
+class SlotAvailabilityOut(BaseModel):
+    id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    remaining_seats: int
+    bookable: bool
+    # Why the slot cannot be booked (FR-19); null when it can.
+    not_bookable_reason: NotBookableReason | None
+
+
+class SlotListOut(BaseModel):
+    service_date: date
+    slots: list[SlotAvailabilityOut]
