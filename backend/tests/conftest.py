@@ -75,7 +75,8 @@ def db_client(engine: Engine) -> Iterator[TestClient]:
     app.dependency_overrides[get_session] = override_get_session
     yield TestClient(app)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE users CASCADE"))
+        # Every business table hangs off one of these; settings keep their seeded defaults.
+        connection.execute(text("TRUNCATE users, menu_items, service_days, discount_rules CASCADE"))
 
 
 @pytest.fixture
