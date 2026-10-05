@@ -1,0 +1,54 @@
+"""Shared fixtures. Database tests run against real PostgreSQL 16 (NFR-37).
+
+A single container is started per test session and migrated to head with
+Alembic, so tests exercise the same schema as production.
+"""
+
+import os
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy import Engine, create_engine
+from testcontainers.community.postgres import PostgresContainer
+
+from app.main import create_app
+from app.mockpay.main import create_app as create_mockpay_app
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+
+# Colima (macOS) exposes Docker on a per-user socket; point testcontainers at it.
+_colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
+if "DOCKER_HOST" not in os.environ and _colima_socket.exists():
+    os.environ["DOCKER_HOST"] = f"unix://{_colima_socket}"
+    os.environ.setdefault("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
+
+
+@pytest.fixture(scope="session")
+def database_url() -> Iterator[str]:
+    with PostgresContainer("postgres:16", driver="psycopg") as postgres:
+        url = postgres.get_connection_url()
+        config = Config(str(BACKEND_DIR / "alembic.ini"))
+        config.set_main_option("sqlalchemy.url", url)
+        command.upgrade(config, "head")
+        yield url
+
+
+@pytest.fixture(scope="session")
+def engine(database_url: str) -> Iterator[Engine]:
+    engine = create_engine(database_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(create_app())
+
+
+@pytest.fixture
+def mockpay_client() -> TestClient:
+    return TestClient(create_mockpay_app())
