@@ -1,11 +1,13 @@
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.db.session import get_session
 from app.models.identity import User
-from app.modules.catalogue.schemas import ItemCreate, ItemOut
+from app.modules.catalogue.schemas import ItemCreate, ItemOut, MenuOut
 from app.modules.catalogue.service import CatalogueService, DuplicateItemNameError
 from app.modules.identity.dependencies import require_permission
 from app.modules.identity.permissions import Permission
@@ -13,6 +15,21 @@ from app.modules.identity.permissions import Permission
 router = APIRouter(tags=["catalogue"])
 
 AdminMenuUser = Annotated[User, Depends(require_permission(Permission.MANAGE_MENU))]
+MenuReader = Annotated[User, Depends(require_permission(Permission.BROWSE_MENU))]
+
+
+@router.get("/menu")
+def browse_menu(
+    user: MenuReader,
+    session: Annotated[Session, Depends(get_session)],
+    service_date: Annotated[
+        date | None, Query(alias="date", description="Defaults to the current service date.")
+    ] = None,
+) -> MenuOut:
+    """FR-13 / US-10: the menu for a service date, with what is left of each item."""
+    return CatalogueService(session).browse_menu(
+        service_date or clock.current_service_date(), clock.now()
+    )
 
 
 @router.post(
