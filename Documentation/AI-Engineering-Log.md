@@ -41,6 +41,11 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E29 | Two simultaneous refreshes of one refresh token revoke all of the user's tokens, logging the user out | **Design risk** | Reproduced during code review | Pending; the client must make only one refresh call at a time (CAFIITK-177) |
 | E30 | After the payment gateway was merged, the test setup loads settings before setting the test secret, so tests sign tokens with the short default key | **Test-validity regression** | Warning count rose from 1 to about 150 | Root cause identified; fix pending |
 | E31 | US-04 AC1–AC2 and US-25 AC1–AC3 were proven on stand-in routes because the real endpoints did not exist yet | Verification gap | Planning | Real-endpoint tests assigned to CAFIITK-132, 153 and 147. Order placement now requires the key, but AC1–AC3 have not yet been repeated on it |
+| E32 | The audit-isolation mistake of E21 and E26 was made a third time, in the order-placement tests | Test defect | Two tests passed alone and failed in the full suite | Assertions scoped to the test's own order |
+| E33 | Order placement was first written with its own copies of the orderable and bookable rules and its own clock module, while two open PRs were adding the same rules and a different file at the same path | Duplication and merge-conflict risk | Reading the open branches before raising the PR | Clock module made identical to the teammates' file; branch rebased once their PRs merged and switched to the shared rules |
+| E34 | FR-33 is listed on both CAFIITK-147 and CAFIITK-148; the AI implemented the release of holds on a failed payment under 147 while the owner of 148 had that story in progress | Scope overlap | Reading the sprint board before starting | Flagged to the author and in the PR; the owner of 148 then wrote acceptance tests only |
+| E35 | The test harness first started the API as two workers sharing one listening socket; on Windows about a third of runs lost responses, although the orders had been accepted | Tooling defect | A test run that hung, then repeated runs with the database inspected | Each API process given its own port; requests alternate between them |
+| E36 | The AI opened the order-placement PR without first showing its description to the author, after saying it would | Process lapse | Reported by the AI in its next summary | Description left editable; no change was requested |
 
 ---
 
@@ -166,3 +171,37 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** a service that claims the key inside the caller's transaction, so that a concurrent duplicate waits on the database and then replays the stored result. Reusing a key with a different request is refused, a duplicate that arrives while the original is still running gets 409, and keys expire after the configured period. Tests run on a stand-in order endpoint (E31).
 - **How it was checked:** lint, strict type checking and the full suite. The concurrency test sends 20 simultaneous duplicates and expects one order. It was confirmed to fail, creating 20 orders, with idempotency disabled, and passed 11 of 11 runs with it enabled. During the branch update, an in-progress merge was lost and redone (E27). The PR was approved by the owner of order placement (Rudransh) and merged.
 - **Outcome:** accepted. Repeating AC1–AC3 on the real order endpoint is still open.
+
+### Place an order (CAFIITK-147, US-22)
+
+- **Asked for:** the author's Sprint 1 tickets, completed with the safest available method and the team's branch, PR and review procedure. This was the first of them: `POST /orders` (FR-29, FR-30, FR-33).
+- **AI produced:** order placement as reserve, authorise, confirm. One transaction locks the inventory rows and then the slot, re-checks availability, re-prices against the quoted amount, allocates the portions and one seat, and commits the order awaiting payment with its first price snapshot and audit entries. The payment gateway is called with no transaction open. A second transaction accepts the order, or marks it failed and returns its holds. Also the order state table (SRS Table 4.6-A) as a pure function that carries each transition's effect on portions and seat, a bounded retry for deadlocks, and tests for the three acceptance criteria and the paths around them.
+- **Design choices beyond the requirements:** the Student's own account row is locked first, outside the documented lock order, so that two simultaneous orders cannot both take the day's subsidy. The idempotency key is completed in the reserve transaction, so a repeat returns the same order even while payment is in flight, and a rejected request does not use up its key. A removed, flagged or sold-out item gives 409 naming it, while an item that never existed gives 422. The quote service was split so that an order is priced by the code that produced the quote. These were listed in the PR for the reviewer.
+- **How it was checked:** lint, strict type checking and the full suite against PostgreSQL 16 in a container. The author's machine had no Docker at first, so the code was left uncommitted until Docker was installed and the tests had run. The first full run failed on audit assertions (E32). Before the PR was raised, the NFR-1 rush was run against the endpoint with the harness below. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** the AI found the overlap with CAFIITK-148 (E34) and the duplicated rules (E33) and raised both before the PR. The PR itself was opened without the promised preview (E36).
+- **Known limits, stated in the PR:** the per-student limit on active orders (US-26), the hold-expiry sweeper and the outbox worker are not built. Of the idempotency criteria noted in E31, the repeat and the different-cart cases are now tested on the real endpoint; the 20-concurrent-duplicates case is not.
+- **Outcome:** accepted.
+
+### Concurrency test harness (CAFIITK-172)
+
+- **Asked for:** the PostgreSQL test harness and load-generation script that prove NFR-1, NFR-2, NFR-4 and NFR-5 under the menu-release rush.
+- **AI produced:** a test fixture that starts two API processes and the mock payment service as real processes on the test database, and a load generator that seeds one item, one slot and one Student per request, sends all orders at once, and compares both the responses and the database with the only correct outcome. The same file runs as a script against the Docker Compose stack and fails on any violation.
+- **How it was checked:** tests at a small scale, including that the checker reports an oversold counter and an unexpected response. An intermittent hang in the first version was investigated rather than rerun: the database showed every connection idle and no lock waits, one worker gave 24 clean runs of 24, and two workers on a shared socket lost responses (E35). The full rush then passed 10 runs of 10. The suite also passed on the CI runners. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** each API process now has its own port. The harness also ran into E30: a separate server process read the environment's signing secret while the tests signed with the cached default. The fixture passes the secret the tests actually use; the import order behind E30 was left as it was and described in the PR.
+- **Outcome:** accepted.
+
+### The rush never oversells (CAFIITK-155, US-30) — AC1 and AC2
+
+- **Asked for:** the acceptance tests for US-30.
+- **AI produced:** AC1, 200 concurrent orders for 50 portions and 30 seats across two API processes, 10 consecutive runs, each required to give exactly 30 accepted orders, 170 refusals, 20 portions and no seats left. AC2, five direct database writes that would oversell or go negative, each refused by a CHECK constraint with the row left unchanged. No application code changed.
+- **How it was checked:** the full suite locally and on the CI runners. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** the AI reported that AC3 and AC4 need the modify and cancel endpoints, which are Sprint 2 work, and offered three ways forward. The author chose to deliver AC1 and AC2 now and carry the other two into Sprint 2 rather than pull that work forward. AC3 and AC4 are in the suite as skipped tests with the reason. The AI read the ticket's wording of AC2 ("a portion count of 0 ... set it to 1") as "allocate one more than exists" and said so in the PR.
+- **Outcome:** accepted for AC1 and AC2. The story stays open.
+
+### Portions follow the order lifecycle (CAFIITK-138, US-13) — AC1 and AC2
+
+- **Asked for:** the acceptance tests for US-13.
+- **AI produced:** AC1, ordering 2 of 10 leaves 8 while the order awaits payment, observed from inside the payment call, and still 8 once accepted. AC2, a declined payment returns the 2 portions with no further action. No application code changed; the behaviour was delivered with order placement.
+- **How it was checked:** the full suite locally and on the CI runners. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** AC3 and AC4 cancel an order and were carried into Sprint 2 by the same decision as for US-30. They are in the suite as skipped tests with the reason. The rule they will test is already in the state table: cancelling an accepted order returns portions and seat, cancelling one in preparation returns only the seat.
+- **Outcome:** accepted for AC1 and AC2. The story stays open.
