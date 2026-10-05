@@ -1,11 +1,13 @@
 """US-01 (FR-1) acceptance tests TC-US01-AC1..AC3, plus US-03 AC3, against real PostgreSQL."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from app.core.security import verify_password
 from app.models.identity import User
+from app.modules.identity.repository import UserRepository
 
 URL = "/api/v1/auth/register"
 BODY = {"name": "A Student", "email": "a@iitk.ac.in", "password": "12345678"}
@@ -74,3 +76,16 @@ def test_short_password_gets_422(db_client: TestClient, engine: Engine) -> None:
 
     assert response.status_code == 422
     assert _users(engine) == []
+
+
+def test_concurrent_duplicate_caught_by_unique_constraint_gets_409(
+    db_client: TestClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert db_client.post(URL, json=BODY).status_code == 201
+    # Simulate a racing request that checked for the email before the first one committed.
+    monkeypatch.setattr(UserRepository, "get_by_email", lambda self, email: None)
+
+    response = db_client.post(URL, json=BODY)
+
+    assert response.status_code == 409
+    assert len(_users(engine)) == 1
