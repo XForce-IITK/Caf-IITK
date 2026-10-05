@@ -1,18 +1,15 @@
 """PaymentGateway adapter against mockpay over real HTTP (ADR-05), and the NFR-6 guard."""
 
 import socket
-import threading
 import time
 from collections.abc import Iterator
 
 import httpx
 import pytest
-import uvicorn
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings, get_settings
-from app.mockpay.main import create_app
+from app.core.config import get_settings
 from app.modules.payments.fake import FakePaymentGateway
 from app.modules.payments.gateway import (
     AuthOutcome,
@@ -26,25 +23,10 @@ from app.modules.payments.mockpay_gateway import (
     get_payment_gateway,
 )
 
-# Stands in for P-PAY_TIMEOUT; mockpay's timeout mode holds requests for longer.
+# Stands in for P-PAY_TIMEOUT. The mockpay_url server (conftest) holds timeout-mode
+# requests for HANG_S, which is longer.
 PAY_TIMEOUT_S = 0.3
 HANG_S = 1.0
-
-
-@pytest.fixture(scope="module")
-def mockpay_url() -> Iterator[str]:
-    """mockpay served by uvicorn on a free local port, so timeouts are real."""
-    app = create_app(Settings(env="test", mockpay_hang_s=HANG_S))
-    listener = socket.socket()
-    listener.bind(("127.0.0.1", 0))
-    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", timeout_graceful_shutdown=2))
-    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
-    thread.start()
-    while not server.started:
-        time.sleep(0.01)
-    yield f"http://127.0.0.1:{listener.getsockname()[1]}"
-    server.should_exit = True
-    thread.join(timeout=5)
 
 
 @pytest.fixture
