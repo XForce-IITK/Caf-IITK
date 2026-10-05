@@ -5,9 +5,16 @@ Alembic, so tests exercise the same schema as production.
 """
 
 import os
+import signal
+import socket
+import subprocess
+import sys
+import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -15,6 +22,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine
 from testcontainers.community.postgres import PostgresContainer
 
+from app.core.config import get_settings
 from app.main import create_app
 from app.mockpay.main import create_app as create_mockpay_app
 
@@ -45,6 +53,92 @@ def engine(database_url: str) -> Iterator[Engine]:
     engine = create_engine(database_url)
     yield engine
     engine.dispose()
+
+
+@dataclass(frozen=True)
+class LiveStack:
+    # One URL per caf-api process.
+    api_urls: tuple[str, ...]
+    mockpay_url: str
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port: int = sock.getsockname()[1]
+        return port
+
+
+def _serve(app: str, url: str, env: dict[str, str]) -> subprocess.Popen[bytes]:
+    port = url.rsplit(":", 1)[1]
+    command = [sys.executable, "-m", "uvicorn", app, "--host", "127.0.0.1", "--port", port]
+    command += ["--log-level", "warning"]
+    # Its own process group, so it can be stopped without touching the test run.
+    if sys.platform == "win32":
+        return subprocess.Popen(
+            command, cwd=BACKEND_DIR, env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+    return subprocess.Popen(command, cwd=BACKEND_DIR, env=env, start_new_session=True)
+
+
+def _stop(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True, check=False
+        )
+    else:
+        os.killpg(process.pid, signal.SIGTERM)
+    process.wait(timeout=20)
+
+
+def _wait_until_healthy(url: str, process: subprocess.Popen[bytes], timeout_s: float = 60) -> None:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"{url} exited with code {process.returncode} during start-up")
+        try:
+            if httpx.get(f"{url}/health", timeout=2).status_code == httpx.codes.OK:
+                return
+        except httpx.HTTPError:
+            pass
+        time.sleep(0.2)
+    raise RuntimeError(f"{url} was not healthy within {timeout_s} s")
+
+
+@pytest.fixture(scope="session")
+def live_stack(database_url: str) -> Iterator[LiveStack]:
+    """Two caf-api processes plus mockpay, serving the test database.
+
+    Concurrency tests that must hold across processes (NFR-13) send real HTTP here
+    instead of using the in-process TestClient. Each API process has its own port:
+    `uvicorn --workers` shares one listening socket, which drops responses on Windows.
+    """
+    stack = LiveStack(
+        api_urls=tuple(f"http://127.0.0.1:{_free_port()}" for _ in range(2)),
+        mockpay_url=f"http://127.0.0.1:{_free_port()}",
+    )
+    env = os.environ | {
+        "CAF_ENV": "test",
+        "CAF_DATABASE_URL": database_url,
+        "CAF_MOCKPAY_URL": stack.mockpay_url,
+        # The secret this process signs test tokens with, whatever the environment says.
+        "CAF_JWT_SECRET": get_settings().jwt_secret,
+    }
+    processes: list[subprocess.Popen[bytes]] = []
+    try:
+        # mockpay keeps its ledger in memory, so it is always one process.
+        servers = [("app.mockpay.main:app", stack.mockpay_url)]
+        servers += [("app.main:app", url) for url in stack.api_urls]
+        for app, url in servers:
+            process = _serve(app, url, env)
+            processes.append(process)
+            _wait_until_healthy(url, process)
+        yield stack
+    finally:
+        for process in reversed(processes):
+            _stop(process)
 
 
 @pytest.fixture
