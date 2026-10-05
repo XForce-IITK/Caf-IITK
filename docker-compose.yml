@@ -1,0 +1,55 @@
+# Local development stack (NFR-40): PostgreSQL 16, caf-api and mockpay.
+# Usage: cp .env.example .env && docker compose up --build
+# caf-worker joins under CAFIITK-174.
+
+x-backend-env: &backend-env
+  CAF_ENV: ${CAF_ENV:-development}
+  CAF_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-caf}:${POSTGRES_PASSWORD:-caf}@db:5432/${POSTGRES_DB:-caf}
+  CAF_JWT_SECRET: ${CAF_JWT_SECRET:?set CAF_JWT_SECRET in .env}
+  CAF_MOCKPAY_URL: http://mockpay:8001
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-caf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-caf}
+      POSTGRES_DB: ${POSTGRES_DB:-caf}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  migrate:
+    build: ./backend
+    environment: *backend-env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: ./backend
+    environment: *backend-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mockpay:
+        condition: service_started
+
+  mockpay:
+    build: ./backend
+    environment: *backend-env
+    command: ["uvicorn", "app.mockpay.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
+
+volumes:
+  pgdata:

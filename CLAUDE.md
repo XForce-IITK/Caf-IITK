@@ -4,7 +4,9 @@ Campus cafeteria pre-order and pickup-slot platform. CS455 Software Engineering 
 
 ## Current state
 
-Documentation only — no code yet. `Documentation/` holds the proposal, SRS (v2.0), SADD, project management report and AI Engineering Log. The SRS and SADD are the source of truth for behaviour and design; read the relevant section before implementing anything.
+Repo skeleton in place (CAFIITK-169): `backend/` (FastAPI app, module packages under `app/modules/`, all core tables from SADD Figure 2.5 in Alembic migration `0001`, testcontainers test setup), `app/` (Flutter Web shell) and `docker-compose.yml`. No feature endpoints yet. See `README.md` for commands. `Documentation/` holds the proposal, SRS (v2.0), SADD, project management report and AI Engineering Log. The SRS and SADD are the source of truth for behaviour and design; read the relevant section before implementing anything.
+
+Backend choices made in the skeleton: synchronous SQLAlchemy with psycopg 3 (FastAPI runs sync endpoints in a threadpool); deploy-time settings come from `CAF_*` environment variables (`app/core/config.py`); administrator-configurable parameters (SRS Table 4.0-B) are seeded into the `settings` table.
 
 The `.docx` files are binary. To read one, extract the text from `word/document.xml` (pandoc is not installed on this machine).
 
