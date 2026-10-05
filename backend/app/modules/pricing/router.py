@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
-from app.models.enums import Role
-from app.modules.identity.dependencies import CurrentUser
+from app.models.identity import User
+from app.modules.identity.dependencies import require_permission
+from app.modules.identity.permissions import Permission
 from app.modules.pricing.schemas import QuoteOut, QuoteRequest
 from app.modules.pricing.service import (
     QuantityLimitError,
@@ -27,14 +28,10 @@ router = APIRouter(tags=["pricing"])
 )
 def create_quote(
     body: QuoteRequest,
-    user: CurrentUser,
+    user: Annotated[User, Depends(require_permission(Permission.MANAGE_OWN_ORDERS))],
     session: Annotated[Session, Depends(get_session)],
 ) -> QuoteOut:
     """FR-25: the full FR-24 breakdown for a cart and slot. Reserves nothing."""
-    # Table 4.1-A: quoting is a Student action. Replace with the shared permission
-    # check once CAFIITK-129 lands.
-    if user.role is not Role.STUDENT:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Forbidden")
     try:
         return QuoteService(session).quote(user, body)
     except SlotNotFoundError:
