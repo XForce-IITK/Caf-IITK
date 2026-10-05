@@ -9,17 +9,18 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 
 from sqlalchemy.orm import Session
 
 from app.core.clock import IST
 from app.models.capacity import DailyInventory
 from app.models.catalogue import MenuItem
-from app.models.enums import ItemStatus, OrderStatus, PaymentCause, PaymentKind, PaymentStatus
+from app.models.enums import OrderStatus, PaymentCause, PaymentKind, PaymentStatus
 from app.models.identity import User
 from app.models.ordering import Order, OrderLine, OrderTransition, Payment, PriceSnapshot
 from app.modules.audit.service import write_audit
+from app.modules.catalogue.domain import not_orderable_reason
 from app.modules.ordering.idempotency import IdempotencyService
 from app.modules.ordering.repository import OrderRepository
 from app.modules.ordering.retry import run_in_transaction
@@ -33,6 +34,7 @@ from app.modules.pricing.service import (
     SlotNotFoundError,
     UnknownItemsError,
 )
+from app.modules.slots.domain import not_bookable_reason
 
 SYSTEM = "SYSTEM"
 
@@ -70,10 +72,16 @@ class _Reservation:
 
 
 def _orderable(item: MenuItem, stock: DailyInventory | None, qty: int, now: datetime) -> bool:
-    flagged = item.unavailable and (item.unavailable_until is None or item.unavailable_until > now)
-    if item.status is not ItemStatus.ACTIVE or flagged or stock is None:
-        return False
-    return stock.total - stock.allocated >= qty
+    """FR-12 as the menu shows it, and enough portions for this line."""
+    available = stock.total - stock.allocated if stock else 0
+    reason = not_orderable_reason(
+        status=item.status,
+        unavailable=item.unavailable,
+        unavailable_until=item.unavailable_until,
+        available=available,
+        now=now,
+    )
+    return reason is None and available >= qty
 
 
 class OrderService:
@@ -135,8 +143,16 @@ class OrderService:
             for line in request.lines
             if not _orderable(items[line.item_id], stock.get(line.item_id), line.qty, now)
         ]
-        closes_at = slot.starts_at - timedelta(minutes=int(settings["P-BOOK_CLOSE_MIN"]))
-        slot_unbookable = slot.booked >= slot.capacity or now >= closes_at
+        slot_unbookable = (
+            not_bookable_reason(
+                capacity=slot.capacity,
+                booked=slot.booked,
+                starts_at=slot.starts_at,
+                now=now,
+                book_close_min=int(settings["P-BOOK_CLOSE_MIN"]),
+            )
+            is not None
+        )
         if unavailable or slot_unbookable:
             raise UnavailableError(unavailable, slot.id if slot_unbookable else None)
 
