@@ -7,6 +7,10 @@ x-backend-env: &backend-env
   CAF_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-caf}:${POSTGRES_PASSWORD:-caf}@db:5432/${POSTGRES_DB:-caf}
   CAF_JWT_SECRET: ${CAF_JWT_SECRET:?set CAF_JWT_SECRET in .env}
   CAF_MOCKPAY_URL: http://mockpay:8001
+  CAF_SEED_ADMIN_EMAIL: ${CAF_SEED_ADMIN_EMAIL:-}
+  CAF_SEED_ADMIN_PASSWORD: ${CAF_SEED_ADMIN_PASSWORD:-}
+  CAF_SEED_KITCHEN_EMAIL: ${CAF_SEED_KITCHEN_EMAIL:-}
+  CAF_SEED_KITCHEN_PASSWORD: ${CAF_SEED_KITCHEN_PASSWORD:-}
 
 services:
   db:
@@ -28,7 +32,8 @@ services:
   migrate:
     build: ./backend
     environment: *backend-env
-    command: ["alembic", "upgrade", "head"]
+    # Migrate, then seed the first Administrator and Kitchen accounts (FR-2).
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed"]
     depends_on:
       db:
         condition: service_healthy
