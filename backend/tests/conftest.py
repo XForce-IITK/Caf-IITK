@@ -52,3 +52,24 @@ def client() -> TestClient:
 @pytest.fixture
 def mockpay_client() -> TestClient:
     return TestClient(create_mockpay_app())
+
+
+@pytest.fixture
+def db_client(engine: Engine) -> Iterator[TestClient]:
+    """An API client whose requests use the test database; tables are emptied afterwards."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session, sessionmaker
+
+    from app.db.session import get_session
+
+    factory = sessionmaker(bind=engine, expire_on_commit=False)
+
+    def override_get_session() -> Iterator[Session]:
+        with factory() as session:
+            yield session
+
+    app = create_app()
+    app.dependency_overrides[get_session] = override_get_session
+    yield TestClient(app)
+    with engine.begin() as connection:
+        connection.execute(text("TRUNCATE users CASCADE"))
