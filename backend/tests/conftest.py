@@ -186,3 +186,30 @@ def configured_database(database_url: str, monkeypatch: pytest.MonkeyPatch) -> I
     get_engine().dispose()
     for cached in (get_settings, get_engine, get_sessionmaker):
         cached.cache_clear()
+
+
+@pytest.fixture(scope="session")
+def mockpay_url() -> Iterator[str]:
+    """mockpay served by uvicorn on a free local port, so timeouts are real (ADR-05).
+
+    Timeout mode holds a request for 1 s; tests give the gateway a shorter timeout.
+    """
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    from app.core.config import Settings
+
+    app = create_mockpay_app(Settings(env="test", mockpay_hang_s=1.0))
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning", timeout_graceful_shutdown=2))
+    thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    thread.start()
+    while not server.started:
+        time.sleep(0.01)
+    yield f"http://127.0.0.1:{listener.getsockname()[1]}"
+    server.should_exit = True
+    thread.join(timeout=5)

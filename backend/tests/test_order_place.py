@@ -239,6 +239,26 @@ def test_tc_us22_ac1_approved_order_is_accepted_with_holds_snapshot_and_audit(
     assert seat_audit.after == {"booked": 1, "order_id": str(order_id)}
 
 
+def test_tc_us16_ac3_order_with_three_different_items_takes_exactly_one_seat(
+    api: TestClient, engine: Engine, menu: dict[str, Any]
+) -> None:
+    """US-16 AC3 (CAFIITK-141, FR-20): seats are per order, not per item or portion."""
+    samosa = MenuItem(id=uuid.uuid4(), name="Samosa", category=ItemCategory.SNACK, price_paise=2000)
+    _add(engine, samosa)
+    _add(engine, DailyInventory(item_id=samosa.id, service_date=DAY, total=10))
+    cart = _cart(menu, quoted=PAYABLE + 2 * 2000)
+    cart["lines"].append({"item_id": str(samosa.id), "qty": 2})
+
+    response = api.post(URL, json=cart, headers=_headers(_user(engine)))
+
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "ACCEPTED"
+    assert len(response.json()["price"]["lines"]) == 3
+    # Five portions across three items, one seat.
+    assert _holds(engine, menu) == (1, 2, 1)
+    assert _allocated(engine, samosa) == 2
+
+
 def test_tc_us22_ac2_sold_out_item_is_named_and_nothing_is_reserved(
     api: TestClient, engine: Engine, menu: dict[str, Any], gateway: FakePaymentGateway
 ) -> None:
