@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://caf:caf@localhost:5432/caf"
     jwt_secret: str = DEFAULT_JWT_SECRET
     mockpay_url: str = "http://localhost:8001"
+    # How long mockpay holds an authorisation in "timeout" mode; keep above pay_timeout_s.
+    mockpay_hang_s: float = 30.0
 
     # Deploy-time parameters from Table 4.0-B
     pay_timeout_s: int = 10
