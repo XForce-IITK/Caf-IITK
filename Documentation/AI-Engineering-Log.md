@@ -31,6 +31,12 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E19 | Default JWT signing secret (17 bytes) was below the 32 bytes recommended for HS256, and nothing stopped production using it | **Security risk** | Library warning during the test run | Production startup refuses a default or short secret |
 | E20 | The test for that check let an environment variable override the value under test | Test defect | Failing test run | Test passes the value explicitly |
 | E21 | Inventory audit tests assumed `audit_log` is emptied between tests; it is append-only and is not | Test defect | Failing test run | Assertions scoped to the test's own entity |
+| E22 | The same audit-isolation mistake as E21 was repeated in the authorisation tests | Test defect | Failing test run | Assertions scoped to the test's own actor |
+| E23 | An in-progress merge was cancelled by a stash taken to compare two test runs | Tooling mistake | Status check before committing | Merge redone from the committed state; no work lost |
+| E24 | The SRS does not say whether a discount window includes its end time; the AI chose start-inclusive, end-exclusive without asking | Specification ambiguity | Writing the pricing engine | Flagged in the PR; team decision pending |
+| E25 | Two simultaneous refreshes of one refresh token revoke all of the user's tokens, logging the user out | **Design risk** | Reproduced during code review | Pending; the client must make only one refresh call at a time (CAFIITK-177) |
+| E26 | After the payment gateway was merged, the test setup loads settings before setting the test secret, so tests sign tokens with the short default key | **Test-validity regression** | Warning count rose from 1 to about 150 | Root cause identified; fix pending |
+| E27 | US-04 AC1–AC2 and US-25 AC1–AC3 were proven on stand-in routes because the real endpoints did not exist yet | Verification gap | Planning | Real-endpoint tests assigned to CAFIITK-132, 153 and 147. Order placement now requires the key, but AC1–AC3 have not yet been repeated on it |
 
 ---
 
@@ -60,3 +66,64 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **How it was checked:** lint, strict type checking and the full suite, including teammates' tests. The first run failed on audit assertions (E21), and the concurrency test was repeated three times. The PR was approved by a teammate (Shashi) with no change requests, then merged.
 - **What changed:** audit assertions were scoped to each test's own item rather than altering the shared test fixture. The PR noted two dependencies: a service date must be configured (US-14) before its inventory can be set, and the menu view itself belongs to US-10.
 - **Outcome:** accepted.
+
+### Sprint 1 execution plan
+
+- **Asked for:** an order of work for every open Sprint 1 ticket, before any code existed and with a same-day deadline.
+- **AI produced:** a dependency-ordered plan: the skeleton first; then identity, catalogue, slots and pricing in parallel; then order placement; then the concurrency proof. Owners were taken from Jira, the critical path (CAFIITK-147) was flagged, and three acceptance criteria that depend on Sprint 2 features were noted.
+- **How it was checked:** compared with the Jira backlog and the ticket dependencies.
+- **Outcome:** accepted; used to sequence the sprint.
+
+### Repository skeleton and core schema (CAFIITK-169)
+
+- **Asked for:** the FastAPI and Flutter Web scaffold, Docker Compose and the first PR, following the SADD.
+- **AI produced:** a module-per-area backend layout. Every table in SADD Figure 2.5 went into one Alembic migration, so that parallel feature PRs would not create conflicting migrations. It also produced a real-PostgreSQL test setup, the Flutter shell, a Compose stack (database, migrations, API, mock payment service) and a README.
+- **How it was checked:** lint, strict type checking and the test suite. The migration was compared against the models with `alembic check`, and the Compose stack was started end to end. The PR was approved by a teammate (Suryansh) and merged.
+- **What changed:** the generated migration was reviewed by hand and amended. The seed for the administrator-configurable parameters (SRS Table 4.0-B) was added, and the downgrade now drops the enum types.
+- **Outcome:** accepted with modifications.
+
+### Review of registration, CI and login (PRs #3–#5)
+
+- **Asked for:** a review of three teammates' merged PRs.
+- **AI produced:** a review that ran the suite and reproduced one real defect, where parallel use of a refresh token logs the user out (E25). It also listed lower-severity issues: the development signing secret is still short, the example seed password would become a real password if copied unchanged, login runs password hashing inside a database transaction, and CI reruns on PR title edits.
+- **How it was checked:** the logout defect was reproduced with two simultaneous refresh requests.
+- **Outcome:** findings recorded; fixes pending a team decision.
+
+### Pricing engine and quote endpoint (CAFIITK-144, US-19)
+
+- **Asked for:** the FR-24 pricing rules and `POST /quotes`, with the US-19 acceptance criteria as tests.
+- **AI produced:** pricing as a pure function over integer paise (discount rules, subsidy with its percentage cap, rounding), kept separate from the database code so it can be unit tested. Also a repository, a service that converts the slot time to IST, and the endpoint. Tests cover all five acceptance criteria.
+- **How it was checked:** lint, strict type checking and the full suite. The AC1 worked example was also calculated by hand. The PR was approved by a teammate (Suryansh) and merged.
+- **What changed:** after the permission layer (CAFIITK-129) merged, the endpoint was switched to the shared permission check.
+- **Outcome:** accepted. How discount windows are interpreted (E24) is pending team confirmation.
+
+### Role-based authorisation (CAFIITK-129, US-04)
+
+- **Asked for:** the SRS Table 4.1-A permission matrix and a reusable check for endpoints.
+- **AI produced:** a permission list, a role-to-permission map and a `require_permission` dependency. On denial it returns 403 and writes a security audit entry. It also produced a shared audit-writing service.
+- **How it was checked:** lint, strict type checking and the full suite. The first run failed on audit assertions (E22). The PR was approved by a teammate (Krishna) and merged.
+- **What changed:** the ticket owner (Shashi) chose to read the role from the database rather than from the token, so a role change takes effect immediately. The owner also chose which fields a denial records (permission, method, path), and to prove AC1–AC2 on stand-in routes because those endpoints arrive in later sprints (E27). Real-endpoint tests are recorded on CAFIITK-132 and 153.
+- **Outcome:** accepted with modifications.
+
+### Onboard a menu item (CAFIITK-131, US-06)
+
+- **Asked for:** `POST /admin/items` for the Administrator.
+- **AI produced:** the endpoint, schema, service and repository, with validation of price limits, an audit entry for each new item, and tests for each acceptance criterion and for permissions.
+- **How it was checked:** lint, strict type checking and the full suite. The PR was approved by a teammate (Krishna) and merged.
+- **What changed:** the owner decided that item names must be unique, ignoring case, among active items only. A test that an onboarded item appears on the menu was deferred to CAFIITK-135, which builds the menu.
+- **Outcome:** accepted with modifications.
+
+### Configure the service window (CAFIITK-139, US-14)
+
+- **Asked for:** `PUT /admin/service-days/{date}` to set a day's service window and generate its slots.
+- **AI produced:** slot generation, which rejects a slot length that does not divide the window evenly. The slot length defaults to the configured parameter. The endpoint also has an audit entry, and tests cover the acceptance criteria, permissions and validation.
+- **How it was checked:** lint, strict type checking and the full suite. The PR was approved by a teammate (Krishna) and merged.
+- **What changed:** the owner set the reconfiguration policy. A day can be reconfigured only while no order references its slots; otherwise the request is refused with 409. The day's row is updated in place, so inventory already set for that day is kept.
+- **Outcome:** accepted with modifications.
+
+### Idempotency keys (CAFIITK-150, US-25)
+
+- **Asked for:** reusable idempotency for create, modify and cancel requests (FR-32, NFR-7, NFR-18), ready for the order endpoints.
+- **AI produced:** a service that claims the key inside the caller's transaction, so that a concurrent duplicate waits on the database and then replays the stored result. Reusing a key with a different request is refused, a duplicate that arrives while the original is still running gets 409, and keys expire after the configured period. Tests run on a stand-in order endpoint (E27).
+- **How it was checked:** lint, strict type checking and the full suite. The concurrency test sends 20 simultaneous duplicates and expects one order. It was confirmed to fail, creating 20 orders, with idempotency disabled, and passed 11 of 11 runs with it enabled. During the branch update, an in-progress merge was lost and redone (E23). The PR was approved by the owner of order placement (Rudransh) and merged.
+- **Outcome:** accepted. Repeating AC1–AC3 on the real order endpoint is still open.
