@@ -18,9 +18,10 @@ class SlotAvailabilityOut {
     required this.remainingSeats,
     required this.startsAt,
   });
-  
-  factory SlotAvailabilityOut.fromJson(Map<String, Object?> json) => _$SlotAvailabilityOutFromJson(json);
-  
+
+  factory SlotAvailabilityOut.fromJson(Map<String, Object?> json) =>
+      _$SlotAvailabilityOutFromJson(json);
+
   final bool bookable;
   @JsonKey(name: 'ends_at')
   final DateTime endsAt;

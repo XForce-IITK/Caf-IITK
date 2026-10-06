@@ -30,7 +30,5 @@ abstract class SlotsClient {
   ///
   /// [date] - Defaults to the current service date.
   @GET('/api/v1/slots')
-  Future<SlotListOut> browseSlots({
-    @Query('date') DateTime? date,
-  });
+  Future<SlotListOut> browseSlots({@Query('date') DateTime? date});
 }

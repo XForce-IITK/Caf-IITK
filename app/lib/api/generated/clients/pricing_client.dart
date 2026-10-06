@@ -18,7 +18,5 @@ abstract class PricingClient {
   ///
   /// FR-25: the full FR-24 breakdown for a cart and slot. Reserves nothing.
   @POST('/api/v1/quotes')
-  Future<QuoteOut> createQuote({
-    @Body() required QuoteRequest body,
-  });
+  Future<QuoteOut> createQuote({@Body() required QuoteRequest body});
 }

@@ -16,9 +16,10 @@ class PlaceOrderRequest {
     required this.quotedPayablePaise,
     required this.slotId,
   });
-  
-  factory PlaceOrderRequest.fromJson(Map<String, Object?> json) => _$PlaceOrderRequestFromJson(json);
-  
+
+  factory PlaceOrderRequest.fromJson(Map<String, Object?> json) =>
+      _$PlaceOrderRequestFromJson(json);
+
   final List<QuoteLineIn> lines;
   @JsonKey(name: 'quoted_payable_paise')
   final int quotedPayablePaise;

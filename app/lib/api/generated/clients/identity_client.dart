@@ -19,15 +19,11 @@ abstract class IdentityClient {
 
   /// Login
   @POST('/api/v1/auth/login')
-  Future<TokenPair> login({
-    @Body() required LoginRequest body,
-  });
+  Future<TokenPair> login({@Body() required LoginRequest body});
 
   /// Logout
   @POST('/api/v1/auth/logout')
-  Future<void> logout({
-    @Body() required RefreshRequest body,
-  });
+  Future<void> logout({@Body() required RefreshRequest body});
 
   /// Me
   @GET('/api/v1/auth/me')
@@ -35,13 +31,9 @@ abstract class IdentityClient {
 
   /// Refresh
   @POST('/api/v1/auth/refresh')
-  Future<TokenPair> refresh({
-    @Body() required RefreshRequest body,
-  });
+  Future<TokenPair> refresh({@Body() required RefreshRequest body});
 
   /// Register
   @POST('/api/v1/auth/register')
-  Future<UserOut> register({
-    @Body() required RegisterRequest body,
-  });
+  Future<UserOut> register({@Body() required RegisterRequest body});
 }

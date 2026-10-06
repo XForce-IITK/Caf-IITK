@@ -8,12 +8,11 @@ part 'inventory_set.g.dart';
 
 @JsonSerializable()
 class InventorySet {
-  const InventorySet({
-    required this.total,
-  });
-  
-  factory InventorySet.fromJson(Map<String, Object?> json) => _$InventorySetFromJson(json);
-  
+  const InventorySet({required this.total});
+
+  factory InventorySet.fromJson(Map<String, Object?> json) =>
+      _$InventorySetFromJson(json);
+
   final int total;
 
   Map<String, Object?> toJson() => _$InventorySetToJson(this);
