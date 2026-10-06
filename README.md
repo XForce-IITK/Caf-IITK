@@ -77,8 +77,28 @@ curl -X PUT localhost:8001/_control/outcome -H 'content-type: application/json' 
 cd app
 flutter pub get
 flutter analyze && flutter test
-flutter run -d chrome
+flutter run -d chrome          # talks to caf-api on http://localhost:8000
 ```
+
+Point the client at another API with
+`--dart-define=API_BASE_URL=https://...`. In development caf-api accepts
+browser calls from any localhost port; in production set `CAF_CORS_ORIGINS` to
+the client's origin (NFR-27).
+
+### Login, routing and networking
+
+- `lib/auth/session.dart` holds the session (`sessionProvider`). Tokens are kept
+  in memory only, so reloading the page logs the user out.
+- `lib/router.dart` sends a logged-in user to exactly one dashboard by role
+  (`/student`, `/kitchen`, `/admin`) and everyone else to `/login` (FR-5). Add
+  a role's screens as child routes under its dashboard path.
+- Every call made through `apiProvider` gets the access token (refreshed once
+  on a 401) and a fresh `X-Request-ID`.
+- For create, modify and cancel, make one key with `newIdempotencyKey()` when
+  the user confirms and pass it to the call. Such requests are retried up to 3
+  times with back-off on a network failure or a 502/503/504, reusing the key
+  (NFR-18).
+- Show failures with `describeApiError(error)` from `lib/api/errors.dart`.
 
 ### API client
 
