@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # How long mockpay holds an authorisation in "timeout" mode; keep above pay_timeout_s.
     mockpay_hang_s: float = 30.0
 
+    # Browser origins allowed to call the API (NFR-27), as a JSON list, e.g.
+    # CAF_CORS_ORIGINS='["https://caf.example.org"]'. Outside production any
+    # localhost port is also allowed, so `flutter run -d chrome` works.
+    cors_origins: list[str] = []
+
     # Deploy-time parameters from Table 4.0-B
     pay_timeout_s: int = 10
     hold_expiry_s: int = 120

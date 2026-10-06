@@ -83,6 +83,24 @@ jobs:
           cache: true
       - name: Install dependencies
         run: flutter pub get --enforce-lockfile
+      # NFR-39: the Dart client is generated from caf-api's OpenAPI schema.
+      # Regenerate both and fail if the committed files are out of date.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install backend (for the OpenAPI export)
+        run: pip install -e ../backend
+      - name: Generated API client is up to date
+        run: |
+          PYTHON=python ./tool/generate_api.sh
+          if [ -n "$(git status --porcelain -- openapi.json lib/api/generated)" ]; then
+            git status --short -- openapi.json lib/api/generated
+            git diff --stat -- openapi.json lib/api/generated
+            echo "::error::The generated API client is stale. Run app/tool/generate_api.sh and commit the result."
+            exit 1
+          fi
       - name: Analyze
         run: flutter analyze
       - name: Test
@@ -90,9 +108,11 @@ jobs:
         run: flutter test --coverage
       - name: Coverage gate (80%)
         run: |
+          # Generated API client code is not counted.
           awk -F: '
-            /^LF:/ { found += $2 }
-            /^LH:/ { hit += $2 }
+            /^SF:/ { skip = ($2 ~ /lib\/api\/generated\//) }
+            /^LF:/ && !skip { found += $2 }
+            /^LH:/ && !skip { hit += $2 }
             END {
               if (found == 0) { print "No coverage data."; exit 1 }
               pct = 100 * hit / found
