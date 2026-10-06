@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, edited, reopened, synchronize]
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  jira-key:
+    name: Jira key in branch and PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name and PR title
+        env:
+          BRANCH: ${{ github.head_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='CAFIITK-[0-9]+'
+          fail=0
+          # develop -> main release PRs carry no issue key
+          if [ "$BRANCH" = "develop" ]; then
+            echo "Release PR from develop; skipping Jira key check."
+            exit 0
+          fi
+          if ! printf '%s' "$BRANCH" | grep -Eq "^${pattern}-"; then
+            echo "::error::Branch '$BRANCH' must be named CAFIITK-<issue>-<slug>."
+            fail=1
+          fi
+          if ! printf '%s' "$TITLE" | grep -Eq "^${pattern}: "; then
+            echo "::error::PR title must start with 'CAFIITK-<issue>: '."
+            fail=1
+          fi
+          exit $fail
+
+  backend:
+    name: Backend lint, type-check and tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install dependencies
+        run: pip install -e '.[dev]'
+      - name: Lint (ruff)
+        run: ruff check . && ruff format --check .
+      - name: Type-check (mypy)
+        if: ${{ !cancelled() }}
+        run: mypy app tests
+      # Tests start PostgreSQL 16 through testcontainers (NFR-37); the runner
+      # provides Docker. The 80% gate is `fail_under` in pyproject.toml.
+      - name: Test with coverage gate (pytest)
+        if: ${{ !cancelled() }}
+        run: pytest --cov --cov-report=term-missing
+
+  client:
+    name: Client analyze, tests and web build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.47.5"
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        if: ${{ !cancelled() }}
+        run: flutter test --coverage
+      - name: Coverage gate (80%)
+        run: |
+          awk -F: '
+            /^LF:/ { found += $2 }
+            /^LH:/ { hit += $2 }
+            END {
+              if (found == 0) { print "No coverage data."; exit 1 }
+              pct = 100 * hit / found
+              printf "Line coverage: %.1f%% (%d of %d lines)\n", pct, hit, found
+              exit pct < 80
+            }' coverage/lcov.info
+      - name: Build web
+        if: ${{ !cancelled() }}
+        run: flutter build web --release
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSLO "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" gitleaks
+      - name: Scan full history
+        run: ./gitleaks git --redact --no-banner .
