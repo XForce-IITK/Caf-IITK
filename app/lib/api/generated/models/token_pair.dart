@@ -17,9 +17,10 @@ class TokenPair {
     required this.role,
     this.tokenType = 'bearer',
   });
-  
-  factory TokenPair.fromJson(Map<String, Object?> json) => _$TokenPairFromJson(json);
-  
+
+  factory TokenPair.fromJson(Map<String, Object?> json) =>
+      _$TokenPairFromJson(json);
+
   @JsonKey(name: 'access_token')
   final String accessToken;
   @JsonKey(name: 'expires_in')

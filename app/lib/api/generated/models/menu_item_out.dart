@@ -21,9 +21,10 @@ class MenuItemOut {
     required this.orderable,
     required this.pricePaise,
   });
-  
-  factory MenuItemOut.fromJson(Map<String, Object?> json) => _$MenuItemOutFromJson(json);
-  
+
+  factory MenuItemOut.fromJson(Map<String, Object?> json) =>
+      _$MenuItemOutFromJson(json);
+
   @JsonKey(name: 'available_portions')
   final int availablePortions;
   final ItemCategory category;

@@ -18,9 +18,10 @@ class ServiceDayOut {
     required this.windowEnd,
     required this.windowStart,
   });
-  
-  factory ServiceDayOut.fromJson(Map<String, Object?> json) => _$ServiceDayOutFromJson(json);
-  
+
+  factory ServiceDayOut.fromJson(Map<String, Object?> json) =>
+      _$ServiceDayOutFromJson(json);
+
   @JsonKey(name: 'default_capacity')
   final int defaultCapacity;
   @JsonKey(name: 'service_date')

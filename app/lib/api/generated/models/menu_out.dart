@@ -10,13 +10,11 @@ part 'menu_out.g.dart';
 
 @JsonSerializable()
 class MenuOut {
-  const MenuOut({
-    required this.items,
-    required this.serviceDate,
-  });
-  
-  factory MenuOut.fromJson(Map<String, Object?> json) => _$MenuOutFromJson(json);
-  
+  const MenuOut({required this.items, required this.serviceDate});
+
+  factory MenuOut.fromJson(Map<String, Object?> json) =>
+      _$MenuOutFromJson(json);
+
   final List<MenuItemOut> items;
   @JsonKey(name: 'service_date')
   final DateTime serviceDate;

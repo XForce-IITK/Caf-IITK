@@ -19,9 +19,10 @@ class QuoteLineOut {
     required this.ruleId,
     required this.unitPricePaise,
   });
-  
-  factory QuoteLineOut.fromJson(Map<String, Object?> json) => _$QuoteLineOutFromJson(json);
-  
+
+  factory QuoteLineOut.fromJson(Map<String, Object?> json) =>
+      _$QuoteLineOutFromJson(json);
+
   @JsonKey(name: 'discount_pct')
   final int discountPct;
   @JsonKey(name: 'item_id')

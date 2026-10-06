@@ -21,3 +21,5 @@ cd "$app_dir"
 rm -rf lib/api/generated
 dart run swagger_parser
 dart run build_runner build --delete-conflicting-outputs
+# Formatted, so running `dart format` over the app leaves the client unchanged.
+dart format lib/api/generated > /dev/null

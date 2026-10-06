@@ -15,9 +15,10 @@ class InventoryOut {
     required this.serviceDate,
     required this.total,
   });
-  
-  factory InventoryOut.fromJson(Map<String, Object?> json) => _$InventoryOutFromJson(json);
-  
+
+  factory InventoryOut.fromJson(Map<String, Object?> json) =>
+      _$InventoryOutFromJson(json);
+
   final int allocated;
   final int available;
   @JsonKey(name: 'item_id')

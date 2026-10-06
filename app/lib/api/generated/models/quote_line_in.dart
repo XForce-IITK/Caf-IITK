@@ -8,13 +8,11 @@ part 'quote_line_in.g.dart';
 
 @JsonSerializable()
 class QuoteLineIn {
-  const QuoteLineIn({
-    required this.itemId,
-    required this.qty,
-  });
-  
-  factory QuoteLineIn.fromJson(Map<String, Object?> json) => _$QuoteLineInFromJson(json);
-  
+  const QuoteLineIn({required this.itemId, required this.qty});
+
+  factory QuoteLineIn.fromJson(Map<String, Object?> json) =>
+      _$QuoteLineInFromJson(json);
+
   @JsonKey(name: 'item_id')
   final String itemId;
   final int qty;

@@ -19,9 +19,7 @@ abstract class CatalogueClient {
   ///
   /// FR-8 / US-06: add a dish; it is ACTIVE immediately.
   @POST('/api/v1/admin/items')
-  Future<ItemOut> onboardItem({
-    @Body() required ItemCreate body,
-  });
+  Future<ItemOut> onboardItem({@Body() required ItemCreate body});
 
   /// Browse Menu.
   ///
@@ -29,7 +27,5 @@ abstract class CatalogueClient {
   ///
   /// [date] - Defaults to the current service date.
   @GET('/api/v1/menu')
-  Future<MenuOut> browseMenu({
-    @Query('date') DateTime? date,
-  });
+  Future<MenuOut> browseMenu({@Query('date') DateTime? date});
 }

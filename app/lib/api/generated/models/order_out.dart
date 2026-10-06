@@ -21,9 +21,10 @@ class OrderOut {
     required this.subsidyApplied,
     required this.version,
   });
-  
-  factory OrderOut.fromJson(Map<String, Object?> json) => _$OrderOutFromJson(json);
-  
+
+  factory OrderOut.fromJson(Map<String, Object?> json) =>
+      _$OrderOutFromJson(json);
+
   @JsonKey(name: 'created_at')
   final DateTime createdAt;
   final String id;

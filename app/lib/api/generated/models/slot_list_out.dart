@@ -10,13 +10,11 @@ part 'slot_list_out.g.dart';
 
 @JsonSerializable()
 class SlotListOut {
-  const SlotListOut({
-    required this.serviceDate,
-    required this.slots,
-  });
-  
-  factory SlotListOut.fromJson(Map<String, Object?> json) => _$SlotListOutFromJson(json);
-  
+  const SlotListOut({required this.serviceDate, required this.slots});
+
+  factory SlotListOut.fromJson(Map<String, Object?> json) =>
+      _$SlotListOutFromJson(json);
+
   @JsonKey(name: 'service_date')
   final DateTime serviceDate;
   final List<SlotAvailabilityOut> slots;
