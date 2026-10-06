@@ -38,7 +38,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E26 | The same audit-isolation mistake as E21 was repeated in the authorisation tests | Test defect | Failing test run | Assertions scoped to the test's own actor |
 | E27 | An in-progress merge was cancelled by a stash taken to compare two test runs | Tooling mistake | Status check before committing | Merge redone from the committed state; no work lost |
 | E28 | The SRS does not say whether a discount window includes its end time; the AI chose start-inclusive, end-exclusive without asking | Specification ambiguity | Writing the pricing engine | Flagged in the PR; team decision pending |
-| E29 | Two simultaneous refreshes of one refresh token revoke all of the user's tokens, logging the user out | **Design risk** | Reproduced during code review | Pending; the client must make only one refresh call at a time (CAFIITK-177) |
+| E29 | Two simultaneous refreshes of one refresh token revoke all of the user's tokens, logging the user out | **Design risk** | Reproduced during code review | The client now makes one refresh call at a time (CAFIITK-177); the server-side behaviour is unchanged |
 | E30 | After the payment gateway was merged, the test setup loads settings before setting the test secret, so tests sign tokens with the short default key | **Test-validity regression** | Warning count rose from 1 to about 150 | Root cause identified; fix pending |
 | E31 | US-04 AC1–AC2 and US-25 AC1–AC3 were proven on stand-in routes because the real endpoints did not exist yet | Verification gap | Planning | Real-endpoint tests assigned to CAFIITK-132, 153 and 147. Order placement now requires the key, but AC1–AC3 have not yet been repeated on it |
 | E32 | The audit-isolation mistake of E21 and E26 was made a third time, in the order-placement tests | Test defect | Two tests passed alone and failed in the full suite | Assertions scoped to the test's own order |
@@ -46,6 +46,15 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E34 | FR-33 is listed on both CAFIITK-147 and CAFIITK-148; the AI implemented the release of holds on a failed payment under 147 while the owner of 148 had that story in progress | Scope overlap | Reading the sprint board before starting | Flagged to the author and in the PR; the owner of 148 then wrote acceptance tests only |
 | E35 | The test harness first started the API as two workers sharing one listening socket; on Windows about a third of runs lost responses, although the orders had been accepted | Tooling defect | A test run that hung, then repeated runs with the database inspected | Each API process given its own port; requests alternate between them |
 | E36 | The AI opened the order-placement PR without first showing its description to the author, after saying it would | Process lapse | Reported by the AI in its next summary | Description left editable; no change was requested |
+| E37 | The AI created a Jira issue to satisfy the PR-title rule without asking the author | Process lapse | Questioned by the author | Kept by the author's decision; a release task now exists for every sprint |
+| E38 | The AI reported twelve merged branches as still on the remote, reading stale local tracking references | Verification flaw | The author said the branches had been deleted | Checked against the remote; local references pruned |
+| E39 | The AI stated that Sprint 3 held 25 issues; it held 23 | Arithmetic error | Summing the estimates | Corrected |
+| E40 | The AI sent a batch of Jira changes that included closing a story the author had only asked to be reviewed | Process lapse | The author stopped the batch | Only the changes the author then named were applied |
+| E41 | The generated client sends dates as date-times, which the backend rejects unless the time is midnight | Integration risk | Checking the format against the backend validator | A helper strips the time; documented in the README |
+| E42 | Sprint 2 holds 73 points against 43 closed in Sprint 1, on AI-drafted estimates | **Planning risk** | Summing the estimates | Flagged in the sprint plan; team review pending |
+| E43 | While checking that the tests catch a broken route guard, the AI reverted an uncommitted file with a version-control command | Tooling slip | The next check found the old file | Rewritten from the same source; analysis, tests and coverage rerun |
+| E44 | Formatting the whole client also reformatted the generated code, which would have failed the up-to-date check in CI | Tooling defect | Reading the commit's file list | The generation script now formats its own output |
+| E45 | Tokens are kept in memory only, so reloading the page logs the user out; the SRS does not say where the client should keep them | Specification gap | Writing the session code | Flagged in the PR; team decision pending |
 
 ---
 
@@ -205,3 +214,37 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **How it was checked:** the full suite locally and on the CI runners. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
 - **What changed:** AC3 and AC4 cancel an order and were carried into Sprint 2 by the same decision as for US-30. They are in the suite as skipped tests with the reason. The rule they will test is already in the state table: cancelling an accepted order returns portions and seat, cancelling one in preparation returns only the seat.
 - **Outcome:** accepted for AC1 and AC2. The story stays open.
+
+### Sprint 2 planning and Jira set-up
+
+- **Asked for:** a review of the board for statuses that had fallen behind the code; assignment of the Sprint 2 issues in the pattern of Sprint 1, keeping an issue and the issues it depends on with one member where possible; then estimates, dependency links, priorities and a per-member order of work.
+- **AI produced:** an assignee and story points for every Sprint 2 issue, rough points for Sprints 3 and 4, 29 "blocks" links between Sprint 2 issues, priorities re-ranked so that an issue which blocks others ranks above the issues it blocks, a release task in each sprint for the merge from `develop` to `main`, and a Sprint 2 plan with a staged order of work and a hand-off table.
+- **How it was checked:** each proposal was shown to the author before it was applied. Suggested status changes were compared with the merged tests in the repository, and values written to Jira were read back.
+- **What changed:** one story was moved between members to even out the load. The AI first suggested closing US-12 as already delivered, then on a second look found that no PR carried its key and that its tests did not follow the naming convention; the author left it open. Several errors were made along the way (E37 to E40, E42).
+- **Outcome:** accepted by the author and applied in Jira. Team review of the estimates and the split is pending.
+
+### Generated API client (CAFIITK-176)
+
+- **Asked for:** a Dart API client generated from the backend's OpenAPI schema, with CI failing when the committed client is out of date (NFR-39).
+- **AI produced:** a command that exports the schema with sorted keys, a script that regenerates the client from it, the generated client itself, a CI step that regenerates both and fails on any difference, and providers through which the app reaches the client. Generated code is excluded from static analysis and from the client coverage gate.
+- **Design choices beyond the requirements:** operation IDs were changed to the endpoint function names so that client methods have readable names, with a backend test that the names stay unique. A pure-Dart generator was chosen so that CI needs no further toolchain.
+- **How it was checked:** lint, strict type checking, the new export tests, the client tests and the release web build on the author's machine, and a repeat generation from a clean cache that gave identical output. The full backend suite and the new CI step ran on the CI runners and passed.
+- **What changed:** the date format the client sends was checked against the backend's validator and a helper added (E41). The script was later made to format its own output (E44).
+- **Outcome:** review pending.
+
+### Login, role-based routing and interceptors (CAFIITK-177)
+
+- **Asked for:** login and register screens, a redirect to exactly one dashboard per role (FR-5), and interceptors for token refresh, a request ID, an idempotency key per user action and retry with the same key (NFR-18).
+- **AI produced:** the two screens with client-side validation; a session holder with login, register, logout and a single shared refresh call; a route guard that keeps each role in its own dashboard and logged-out users on login and register; the interceptors; and placeholder dashboards for the three roles. Retries apply only to requests that carry an idempotency key, on a network failure or a 502, 503 or 504.
+- **Design choices beyond the requirements:** CORS configuration was added to the backend, because a browser client cannot call the API without it; any localhost port is allowed outside production and only configured origins in production (NFR-27). The single shared refresh call addresses E29 on the client side.
+- **How it was checked:** 44 client tests against a scripted stand-in for the API, including the first two acceptance criteria of US-02 for each role; the route guard was deliberately broken to confirm that the tests fail (E43). CI passed, including the full backend suite. The author then ran the flow by hand in Chrome and Firefox against the local stack, including a token refresh after the access-token lifetime.
+- **What changed:** nothing after the manual run. Where the client should keep its tokens is an open question (E45).
+- **Outcome:** review pending; opened as a draft because it builds on CAFIITK-176.
+
+### Student order flow, first half (CAFIITK-178)
+
+- **Asked for:** the Student dashboard for the endpoints that already exist: menu with availability, slot picker with remaining seats, the full price breakdown before confirming, and placing the order (NFR-32).
+- **AI produced:** one screen with those four steps. A refused order names the item or slot that was unavailable; a changed price is shown and must be confirmed again (FR-26); a failed payment keeps the cart. Each priced quote gets its own idempotency key, reused if that confirmation is repeated.
+- **How it was checked:** 64 client tests in all, with analysis, the coverage gate and the release web build on the author's machine. The author then ran the flow by hand against the local stack: ordering, a declined payment, and a confirmation repeated across an API outage, which reached the server once the API returned and carried the same key as the failed attempts.
+- **What changed:** an earlier login test was corrected, because the dashboard now loads data as soon as it opens.
+- **Outcome:** in progress. Modify, cancel and order tracking wait for endpoints owned by other members.
