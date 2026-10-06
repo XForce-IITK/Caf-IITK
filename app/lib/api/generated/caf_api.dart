@@ -14,11 +14,7 @@ import 'clients/ops_client.dart';
 
 /// Caf@IITK API `v0.1.0`
 class CafApi {
-  CafApi(
-    Dio dio, {
-    String? baseUrl,
-  })  : _dio = dio,
-        _baseUrl = baseUrl;
+  CafApi(Dio dio, {String? baseUrl}) : _dio = dio, _baseUrl = baseUrl;
 
   final Dio _dio;
   final String? _baseUrl;
@@ -33,17 +29,22 @@ class CafApi {
   PricingClient? _pricing;
   OpsClient? _ops;
 
-  InventoryClient get inventory => _inventory ??= InventoryClient(_dio, baseUrl: _baseUrl);
+  InventoryClient get inventory =>
+      _inventory ??= InventoryClient(_dio, baseUrl: _baseUrl);
 
-  CatalogueClient get catalogue => _catalogue ??= CatalogueClient(_dio, baseUrl: _baseUrl);
+  CatalogueClient get catalogue =>
+      _catalogue ??= CatalogueClient(_dio, baseUrl: _baseUrl);
 
   SlotsClient get slots => _slots ??= SlotsClient(_dio, baseUrl: _baseUrl);
 
-  IdentityClient get identity => _identity ??= IdentityClient(_dio, baseUrl: _baseUrl);
+  IdentityClient get identity =>
+      _identity ??= IdentityClient(_dio, baseUrl: _baseUrl);
 
-  OrderingClient get ordering => _ordering ??= OrderingClient(_dio, baseUrl: _baseUrl);
+  OrderingClient get ordering =>
+      _ordering ??= OrderingClient(_dio, baseUrl: _baseUrl);
 
-  PricingClient get pricing => _pricing ??= PricingClient(_dio, baseUrl: _baseUrl);
+  PricingClient get pricing =>
+      _pricing ??= PricingClient(_dio, baseUrl: _baseUrl);
 
   OpsClient get ops => _ops ??= OpsClient(_dio, baseUrl: _baseUrl);
 }

@@ -15,9 +15,10 @@ class ValidationError {
     this.ctx,
     this.input,
   });
-  
-  factory ValidationError.fromJson(Map<String, Object?> json) => _$ValidationErrorFromJson(json);
-  
+
+  factory ValidationError.fromJson(Map<String, Object?> json) =>
+      _$ValidationErrorFromJson(json);
+
   final dynamic ctx;
   final dynamic input;
   final List<dynamic> loc;

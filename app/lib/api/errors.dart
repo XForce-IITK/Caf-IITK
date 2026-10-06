@@ -11,6 +11,9 @@ String describeApiError(Object error) {
   final data = response.data;
   final detail = data is Map ? data['detail'] : null;
   if (detail is String && detail.isNotEmpty) return detail;
+  // Some conflicts carry a structured detail with its own message.
+  final message = detail is Map ? detail['message'] : null;
+  if (message is String && message.isNotEmpty) return message;
   if (response.statusCode == 422) {
     final message = _firstValidationMessage(detail);
     if (message != null) return message;

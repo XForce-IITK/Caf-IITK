@@ -16,9 +16,10 @@ class ItemCreate {
     required this.pricePaise,
     this.description = '',
   });
-  
-  factory ItemCreate.fromJson(Map<String, Object?> json) => _$ItemCreateFromJson(json);
-  
+
+  factory ItemCreate.fromJson(Map<String, Object?> json) =>
+      _$ItemCreateFromJson(json);
+
   final ItemCategory category;
   final String description;
   final String name;

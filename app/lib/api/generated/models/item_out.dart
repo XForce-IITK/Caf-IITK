@@ -20,9 +20,10 @@ class ItemOut {
     required this.status,
     required this.unavailable,
   });
-  
-  factory ItemOut.fromJson(Map<String, Object?> json) => _$ItemOutFromJson(json);
-  
+
+  factory ItemOut.fromJson(Map<String, Object?> json) =>
+      _$ItemOutFromJson(json);
+
   final ItemCategory category;
   final String description;
   final String id;

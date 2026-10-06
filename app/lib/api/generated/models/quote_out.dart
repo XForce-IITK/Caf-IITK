@@ -19,9 +19,10 @@ class QuoteOut {
     required this.slotId,
     required this.subsidyPaise,
   });
-  
-  factory QuoteOut.fromJson(Map<String, Object?> json) => _$QuoteOutFromJson(json);
-  
+
+  factory QuoteOut.fromJson(Map<String, Object?> json) =>
+      _$QuoteOutFromJson(json);
+
   @JsonKey(name: 'discounted_subtotal_paise')
   final int discountedSubtotalPaise;
   final List<QuoteLineOut> lines;

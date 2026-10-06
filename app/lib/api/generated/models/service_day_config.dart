@@ -15,9 +15,10 @@ class ServiceDayConfig {
     required this.windowStart,
     this.slotLenMin,
   });
-  
-  factory ServiceDayConfig.fromJson(Map<String, Object?> json) => _$ServiceDayConfigFromJson(json);
-  
+
+  factory ServiceDayConfig.fromJson(Map<String, Object?> json) =>
+      _$ServiceDayConfigFromJson(json);
+
   @JsonKey(name: 'default_capacity')
   final int defaultCapacity;
   @JsonKey(name: 'slot_len_min')

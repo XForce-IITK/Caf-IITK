@@ -16,9 +16,10 @@ class UserOut {
     required this.name,
     required this.role,
   });
-  
-  factory UserOut.fromJson(Map<String, Object?> json) => _$UserOutFromJson(json);
-  
+
+  factory UserOut.fromJson(Map<String, Object?> json) =>
+      _$UserOutFromJson(json);
+
   final String email;
   final String id;
   final String name;

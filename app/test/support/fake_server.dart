@@ -93,6 +93,9 @@ const refreshUrl = '/api/v1/auth/refresh';
 const logoutUrl = '/api/v1/auth/logout';
 const meUrl = '/api/v1/auth/me';
 const ordersUrl = '/api/v1/orders';
+const menuUrl = '/api/v1/menu';
+const slotsUrl = '/api/v1/slots';
+const quotesUrl = '/api/v1/quotes';
 
 /// A provider container whose API calls go to [server]. Retry waits are
 /// recorded in [delays] instead of being slept.

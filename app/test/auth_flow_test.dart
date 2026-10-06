@@ -26,7 +26,12 @@ Future<void> _logIn(WidgetTester tester) async {
 
 FakeServer _serverFor(String role) {
   return FakeServer(
-    (r) => r.path == loginUrl ? Reply(200, tokens(role)) : const Reply(204),
+    (r) => switch (r.path) {
+      loginUrl => Reply(200, tokens(role)),
+      menuUrl => const Reply(200, {'service_date': '2026-10-06', 'items': []}),
+      slotsUrl => const Reply(200, {'service_date': '2026-10-06', 'slots': []}),
+      _ => const Reply(204),
+    },
   );
 }
 
@@ -158,14 +163,18 @@ void main() {
   testWidgets('a session that expires sends the user back to login', (
     tester,
   ) async {
-    final server = FakeServer((r) {
-      if (r.path == loginUrl) return Reply(200, tokens('STUDENT'));
-      return const Reply(401, {'detail': 'Invalid refresh token'});
-    });
+    final working = _serverFor('STUDENT');
+    var expired = false;
+    final server = FakeServer(
+      (r) => expired
+          ? const Reply(401, {'detail': 'Invalid refresh token'})
+          : working.handler(r),
+    );
     final container = await _start(tester, server);
     await _logIn(tester);
     expect(_location(container), '/student');
 
+    expired = true;
     await tester.runAsync(() async {
       try {
         await container.read(apiProvider).identity.me();
@@ -176,6 +185,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_location(container), '/login');
+    expect(container.read(sessionProvider), isNull);
   });
 
   testWidgets('a role this client does not know is not let in', (tester) async {

@@ -10,13 +10,11 @@ part 'quote_request.g.dart';
 
 @JsonSerializable()
 class QuoteRequest {
-  const QuoteRequest({
-    required this.lines,
-    required this.slotId,
-  });
-  
-  factory QuoteRequest.fromJson(Map<String, Object?> json) => _$QuoteRequestFromJson(json);
-  
+  const QuoteRequest({required this.lines, required this.slotId});
+
+  factory QuoteRequest.fromJson(Map<String, Object?> json) =>
+      _$QuoteRequestFromJson(json);
+
   final List<QuoteLineIn> lines;
   @JsonKey(name: 'slot_id')
   final String slotId;

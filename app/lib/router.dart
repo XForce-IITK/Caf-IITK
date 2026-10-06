@@ -7,6 +7,7 @@ import 'auth/login_screen.dart';
 import 'auth/register_screen.dart';
 import 'auth/session.dart';
 import 'dashboards/dashboards.dart';
+import 'student/student_dashboard.dart';
 
 const loginPath = '/login';
 const registerPath = '/register';

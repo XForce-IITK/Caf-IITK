@@ -15,9 +15,10 @@ class SlotOut {
     required this.id,
     required this.startsAt,
   });
-  
-  factory SlotOut.fromJson(Map<String, Object?> json) => _$SlotOutFromJson(json);
-  
+
+  factory SlotOut.fromJson(Map<String, Object?> json) =>
+      _$SlotOutFromJson(json);
+
   final int booked;
   final int capacity;
   @JsonKey(name: 'ends_at')
