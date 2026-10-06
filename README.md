@@ -77,8 +77,45 @@ curl -X PUT localhost:8001/_control/outcome -H 'content-type: application/json' 
 cd app
 flutter pub get
 flutter analyze && flutter test
-flutter run -d chrome
+flutter run -d chrome          # talks to caf-api on http://localhost:8000
 ```
+
+Point the client at another API with
+`--dart-define=API_BASE_URL=https://...`. In development caf-api accepts
+browser calls from any localhost port; in production set `CAF_CORS_ORIGINS` to
+the client's origin (NFR-27).
+
+### Login, routing and networking
+
+- `lib/auth/session.dart` holds the session (`sessionProvider`). Tokens are kept
+  in memory only, so reloading the page logs the user out.
+- `lib/router.dart` sends a logged-in user to exactly one dashboard by role
+  (`/student`, `/kitchen`, `/admin`) and everyone else to `/login` (FR-5). Add
+  a role's screens as child routes under its dashboard path.
+- Every call made through `apiProvider` gets the access token (refreshed once
+  on a 401) and a fresh `X-Request-ID`.
+- For create, modify and cancel, make one key with `newIdempotencyKey()` when
+  the user confirms and pass it to the call. Such requests are retried up to 3
+  times with back-off on a network failure or a 502/503/504, reusing the key
+  (NFR-18).
+- Show failures with `describeApiError(error)` from `lib/api/errors.dart`.
+
+### API client
+
+`app/lib/api/generated/` is generated from caf-api's OpenAPI schema
+(`app/openapi.json`) and is never edited by hand. After any change to an
+endpoint or a request/response schema, regenerate it and commit the result in
+the same PR; CI regenerates it and fails if the committed files differ (NFR-39).
+
+```sh
+app/tool/generate_api.sh      # needs the backend venv and Flutter
+```
+
+Use the client through `apiProvider` in `app/lib/api/api.dart`, for example
+`ref.read(apiProvider).catalogue.browseMenu(date: serviceDate(DateTime.now()))`.
+Methods are named after the backend endpoint functions, so keep those names
+unique. Pass service dates through `serviceDate(...)`: the backend rejects a
+date that carries a time of day.
 
 ## Workflow
 
