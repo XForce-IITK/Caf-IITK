@@ -61,6 +61,11 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E49 | Test data written for the agent run prioritised an item that had no orders in the slot, which FR-54 does not allow; it passed only because nothing checked it yet | Test defect | The new output validator rejected it | Test data corrected so the tests check what they were written for |
 | E50 | The LLM client has never called OpenAI, and its default model is an unconfirmed choice | **Verification gap** | No API key on the author's machine | Pending: one call with the team key, and a decision on the model |
 | E51 | The Docker run of the heuristic fallback was abandoned when the image rebuild stalled downloading packages | Verification gap | The build did not finish | Behaviour covered by tests against PostgreSQL; the run before it had exercised the queue-to-worker path in Docker |
+| E52 | The AI balanced the reassignment on open work rather than over the whole sprint, without asking which measure the author wanted, leaving the author 5 points above the others over the sprint | Planning misjudgement | Questioned by the author | Two issues reassigned; whole-sprint totals within 3 points |
+| E53 | The AI said the merges were probably blocked because the approval was given while the PR was a draft; the next retry worked without any change | Misdiagnosis | The author pointed out it did not fit #28 | Retracted |
+| E54 | The AI said 27 requirement tasks could be closed; its own table listed 29 | Arithmetic error | Counting the transitions made | Corrected in the report |
+| E55 | A background wait for CI used a `gh` option this version does not have, so it could never finish | Tooling defect | Noticed while merging by hand | Stopped; later waits checked differently |
+| E56 | For an order that does not exist, cancel and modify log a security event while tracking does not | Design inconsistency | Reading the merged cancel and modify code | Flagged in the PR; team decision pending |
 
 ---
 
@@ -304,3 +309,36 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **How it was checked:** tests against PostgreSQL for the three acceptance criteria (an invented item, invalid output twice, and 10,000 extra portions) and for each validation rule. The validator also caught a defect in earlier test data (E49). The PR was approved by a teammate (Shashi) with no change requests, then merged.
 - **What changed:** the earlier test data was corrected.
 - **Outcome:** accepted.
+
+### Order tracking endpoint (CAFIITK-154, US-29)
+
+- **Asked for:** `GET /orders/{id}` with the order's current status and its timestamped history (FR-40), started as soon as it was unblocked.
+- **AI produced:** the endpoint, a tracking service that owns its read transaction, two repository reads, response schemas, and the regenerated Dart client. Another Student's order answers 404 exactly like a missing one and is logged as a security event (FR-7), which also delivered US-05 AC1.
+- **How it was checked:** the full backend suite against PostgreSQL 16 in a container (433 passed), lint, strict type checking and the client tests. The kitchen transitions did not exist yet, so the tests applied them through the state machine directly, writing the same rows the kitchen endpoint will; the PR flagged them for replacement once that endpoint exists. The PR was approved by a teammate (Rudransh) with no change requests, then merged.
+- **Outcome:** accepted.
+
+### Student order flow, second half (CAFIITK-178): tracking, cancel and modify
+
+- **Asked for:** the rest of the Student flow as each backend endpoint landed: the order's live status, cancelling, and changing its items or slot.
+- **AI produced:** three PRs.
+  - Tracking: a status panel refreshed every P-POLL, which stops at a final state or when the order leaves the screen.
+  - Cancel: a confirmation that says what is refunded, sent at the order version shown.
+  - Modify: an editor that starts from what the order holds, keeps the order's own portions and seat available to it, is priced before confirming, and is applied at the version shown.
+  - In all three, refusals are explained, and a network failure keeps the idempotency key so a repeat is safe.
+- **How it was checked:** the client tests grew to 97, line coverage stayed above 97% and the release web build passed. In each PR one key test was confirmed real by breaking the rule it guards in a backed-up copy of the file, seeing the test fail, and restoring the file. The first two PRs were approved by a teammate (Rudransh) and the third by another (Shashi), with no change requests, then merged. Not yet checked by hand in a browser.
+- **What changed:** each branch had to be brought up to date with `develop` before it could merge, because teammates' PRs landed in between.
+- **Outcome:** accepted; the story is complete.
+
+### Private orders (CAFIITK-130, US-05)
+
+- **Asked for:** close US-05 once modify existed.
+- **AI produced:** no application code. Reading the merged code showed the behaviour had already been delivered and tested under three other stories, so the AI added one acceptance test named for US-05 AC2 that covers modify and cancel together.
+- **How it was checked:** the full backend suite (653 passed). The PR was approved by a teammate (Shashi) with no change requests, then merged.
+- **Outcome:** accepted.
+
+### Sprint 2 reassignment and board clean-up
+
+- **Asked for:** redistribute an unavailable member's five issues so the other four had about the same workload, with as few cross-member dependencies as possible and without moving anyone else's issues; then revise the sprint plan; later, close any backlog requirement tasks that the merged work had satisfied.
+- **AI produced:** a reassignment, a revised sprint plan, and a review of every open requirement task against the acceptance tests on `develop`.
+- **What changed:** the AI first balanced on open work only, which put most of the reassigned work on the author. The author asked for the whole sprint to be balanced instead, and two issues were moved again (E52). Of the requirement tasks, 29 were moved to Done; four were left for their owners to confirm, and the rest were listed with what each still needs.
+- **Outcome:** accepted by the author and applied in Jira.
