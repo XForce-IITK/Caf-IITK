@@ -22,3 +22,9 @@ String formatIstTime(DateTime moment) {
 String formatSlot(DateTime startsAt, DateTime endsAt) {
   return '${formatIstTime(startsAt)} – ${formatIstTime(endsAt)}';
 }
+
+/// Today's service date: the IST calendar date, whatever the browser's zone is.
+DateTime istToday([DateTime? now]) {
+  final ist = (now ?? DateTime.now()).toUtc().add(_istOffset);
+  return DateTime(ist.year, ist.month, ist.day);
+}
