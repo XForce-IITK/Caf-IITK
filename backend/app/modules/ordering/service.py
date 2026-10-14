@@ -26,6 +26,7 @@ from app.models.ordering import Order, OrderLine, OrderTransition, Payment, Pric
 from app.modules.audit.service import record_security_event, write_audit
 from app.modules.catalogue.domain import not_orderable_reason
 from app.modules.ordering.idempotency import IdempotencyService
+from app.modules.ordering.refunds import RefundPart, refund_parts
 from app.modules.ordering.repository import OrderRepository
 from app.modules.ordering.retry import run_in_transaction
 from app.modules.ordering.schemas import (
@@ -108,8 +109,7 @@ class _Reservation:
 class _PendingRefund:
     order_id: uuid.UUID
     refund_id: uuid.UUID
-    auth_id: uuid.UUID
-    amount_paise: int
+    parts: list[RefundPart]
 
 
 # T6 and T7 are the Student's cancels (FR-37); READY and terminal states are refused.
@@ -361,7 +361,6 @@ class OrderService:
             # looked: show the new state and refund and let them confirm again.
             raise OrderConflictError("the order has changed", order, refund_paise)
 
-        auth = self.repo.get_auth_payment(order.id)
         self._move(order, OrderStatus.CANCELLED, actor=student, reason="cancelled by student")
         refund = Payment(
             id=uuid.uuid4(),
@@ -372,28 +371,44 @@ class OrderService:
             # Nothing to send for a zero refund; the record still exists (FR-39).
             status=PaymentStatus.PENDING if refund_paise else PaymentStatus.SUCCEEDED,
         )
+        pending = self._record_refund(refund, student)
+        self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
+        return pending
+
+    def _record_refund(self, refund: Payment, actor: User) -> _PendingRefund | None:
+        """Add the refund record and work out the parts to send; None if nothing to send."""
         self.repo.add(refund)
         write_audit(
             self.session,
             action="REFUND_RECORDED",
             entity_type="payment",
             entity_id=str(refund.id),
-            actor_id=str(student.id),
-            actor_role=student.role.value,
-            after={"order_id": str(order.id), "amount_paise": refund_paise, "cause": "CANCEL"},
+            actor_id=str(actor.id),
+            actor_role=actor.role.value,
+            after={
+                "order_id": str(refund.order_id),
+                "amount_paise": refund.amount_paise,
+                "cause": refund.cause.value,
+            },
         )
-        self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
-        if not refund_paise:
+        if not refund.amount_paise:
             return None
-        return _PendingRefund(order.id, refund.id, auth.id, refund_paise)
+        parts = refund_parts(
+            self.repo.get_charges(refund.order_id),
+            self.repo.get_refunds(refund.order_id),
+            refund.id,
+        )
+        return _PendingRefund(refund.order_id, refund.id, parts)
 
     def _deliver_refund(self, pending: _PendingRefund) -> None:
         """Send the refund once; on failure it stays PENDING for the outbox retrier (FR-39).
 
-        The refund row id is the reference, so a retry can never refund twice.
+        Each part's reference derives from the refund row id, so a retry can never
+        refund twice.
         """
         try:
-            self.gateway.refund(str(pending.refund_id), str(pending.auth_id), pending.amount_paise)
+            for part in pending.parts:
+                self.gateway.refund(part.reference, str(part.auth_id), part.amount_paise)
             delivered = True
         except PaymentGatewayError as exc:
             logger.warning("refund %s not acknowledged, left for retry: %s", pending.refund_id, exc)

@@ -7,9 +7,13 @@ import 'package:retrofit/retrofit.dart';
 
 import '../models/cancel_order_request.dart';
 import '../models/cancelled_order_out.dart';
+import '../models/modification_quote_out.dart';
+import '../models/modified_order_out.dart';
+import '../models/modify_order_request.dart';
 import '../models/order_detail_out.dart';
 import '../models/order_out.dart';
 import '../models/place_order_request.dart';
+import '../models/quote_request.dart';
 
 part 'ordering_client.g.dart';
 
@@ -38,6 +42,20 @@ abstract class OrderingClient {
   @GET('/api/v1/orders/{order_id}')
   Future<OrderDetailOut> getOrder({@Path('order_id') required String orderId});
 
+  /// Modify Order.
+  ///
+  /// FR-35, FR-36: replace an ACCEPTED order's items and/or slot before slot start -.
+  /// P-CUTOFF, atomically. The order is re-priced as snapshot v(n+1); a higher price is.
+  /// charged for the difference, a lower one refunded exactly once (FR-39).
+  ///
+  /// `lines` is the complete new cart. A repeat with the same key returns the same result.
+  @PATCH('/api/v1/orders/{order_id}')
+  Future<ModifiedOrderOut> modifyOrder({
+    @Path('order_id') required String orderId,
+    @Header('Idempotency-Key') required String idempotencyKey,
+    @Body() required ModifyOrderRequest body,
+  });
+
   /// Cancel Order.
   ///
   /// FR-37, FR-39: cancel from ACCEPTED (100 % refund, seat and portions restored) or.
@@ -50,5 +68,15 @@ abstract class OrderingClient {
     @Path('order_id') required String orderId,
     @Header('Idempotency-Key') required String idempotencyKey,
     @Body() required CancelOrderRequest body,
+  });
+
+  /// Quote Order Modification.
+  ///
+  /// UC-12 step 3: what the order would cost with this cart and slot, and the.
+  /// difference from what was paid. Read-only; nothing is reserved.
+  @POST('/api/v1/orders/{order_id}/quote')
+  Future<ModificationQuoteOut> quoteOrderModification({
+    @Path('order_id') required String orderId,
+    @Body() required QuoteRequest body,
   });
 }

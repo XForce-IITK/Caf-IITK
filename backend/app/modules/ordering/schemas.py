@@ -91,3 +91,25 @@ class RefundOut(BaseModel):
 
 class CancelledOrderOut(OrderOut):
     refund: RefundOut
+
+
+class ModifyOrderRequest(QuoteRequest):
+    """The complete new cart and slot (UC-12), as quoted, and the version the Student saw."""
+
+    version: Annotated[int, Field(ge=1)]
+    quoted_payable_paise: Annotated[int, Field(ge=0)]
+
+
+class ModificationQuoteOut(BaseModel):
+    """UC-12 step 3: the new price and its difference from what was paid."""
+
+    quote: QuoteOut
+    paid_paise: int
+    # Positive: charged on confirmation; negative: refunded.
+    difference_paise: int
+
+
+class ModifiedOrderOut(OrderOut):
+    difference_paise: int
+    # Present when the modification lowered the price (FR-39).
+    refund: RefundOut | None
