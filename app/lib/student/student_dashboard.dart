@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../api/api.dart';
 import '../api/errors.dart';
 import '../dashboards/dashboard_scaffold.dart';
+import 'cancel_order.dart';
 import 'format.dart';
 import 'order_tracking.dart';
 import 'student_state.dart';
@@ -385,6 +386,8 @@ class _OrderPlaced extends ConsumerWidget {
           Text('Pick it up between ${formatSlot(slot.startsAt, slot.endsAt)}.'),
         const SizedBox(height: 8),
         OrderStatusPanel(order.id),
+        const SizedBox(height: 8),
+        CancelOrderSection(order.id),
         const SizedBox(height: 8),
         _QuoteBreakdown(order.price, showSlot: false),
         const SizedBox(height: 16),

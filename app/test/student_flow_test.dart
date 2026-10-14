@@ -98,8 +98,22 @@ Map<String, Object?> _tracked(String status) {
     _step('PREPARING', 'READY', '2026-10-06T06:40:00Z', 'KITCHEN'),
     _step('READY', 'PICKED_UP', '2026-10-06T06:50:00Z', 'KITCHEN'),
   ];
+  if (status == 'CANCELLED') {
+    return {
+      ..._order(status),
+      'version': 3,
+      'history': [
+        ...steps.sublist(0, 2),
+        _step('ACCEPTED', 'CANCELLED', '2026-10-06T05:30:00Z', 'STUDENT'),
+      ],
+    };
+  }
   final reached = steps.indexWhere((step) => step['to_status'] == status);
-  return {..._order(status), 'history': steps.sublist(0, reached + 1)};
+  return {
+    ..._order(status),
+    'version': reached,
+    'history': steps.sublist(0, reached + 1),
+  };
 }
 
 /// caf-api as the Student flow sees it. Tests replace [placeOrder] and the
@@ -128,6 +142,11 @@ class _Cafe {
       Reply(201, _order('ACCEPTED'));
   Reply Function(Seen request) tracking = (_) =>
       Reply(200, _tracked('ACCEPTED'));
+  Reply Function(Seen request) cancel = (_) => Reply(200, {
+    ..._order('CANCELLED'),
+    'version': 3,
+    'refund': {'amount_paise': 14000, 'status': 'SUCCEEDED'},
+  });
   final delays = <Duration>[];
 
   _Cafe() {
@@ -142,6 +161,7 @@ class _Cafe {
       quotesUrl => quote(r),
       ordersUrl => placeOrder(r),
       '$ordersUrl/o1' => tracking(r),
+      '$ordersUrl/o1/cancel' => cancel(r),
       _ => const Reply(204),
     },
   );
@@ -679,6 +699,235 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
 
       expect(cafe.server.to('$ordersUrl/o1'), hasLength(requests));
+    });
+  });
+
+  group('cancelling (FR-37)', () {
+    Future<_Cafe> placed(
+      WidgetTester tester, {
+      String status = 'ACCEPTED',
+    }) async {
+      final cafe = _Cafe()..tracking = (_) => Reply(200, _tracked(status));
+      await cafe.open(tester);
+      await _reviewTwoThalis(tester);
+      await _tap(tester, 'confirm');
+      return cafe;
+    }
+
+    String text(WidgetTester tester, String key) {
+      return tester.widget<Text>(find.byKey(Key(key))).data!;
+    }
+
+    testWidgets('an accepted order is cancelled after confirming, with a full '
+        'refund', (tester) async {
+      final cafe = await placed(tester);
+
+      await _tap(tester, 'cancel-order');
+      expect(find.text('Cancel this order?'), findsOneWidget);
+      expect(
+        find.text(
+          'You will get a full refund of ₹140, and your pickup seat is released.',
+        ),
+        findsOneWidget,
+      );
+      cafe.tracking = (_) => Reply(200, _tracked('CANCELLED'));
+      await _tap(tester, 'confirm-cancel');
+
+      final request = cafe.server.to('$ordersUrl/o1/cancel').single;
+      expect(request.data, {'version': 1});
+      expect(
+        request.headers['Idempotency-Key'],
+        matches(RegExp(r'^[0-9a-f-]{36}$')),
+      );
+      expect(text(tester, 'cancel-result'), 'Order cancelled. ₹140 refunded.');
+      expect(
+        tester.widget<Text>(find.byKey(const Key('order-status'))).data,
+        'Cancelled.',
+      );
+      expect(find.byKey(const Key('cancel-order')), findsNothing);
+    });
+
+    testWidgets('keeping the order sends nothing', (tester) async {
+      final cafe = await placed(tester);
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'keep-order');
+
+      expect(cafe.server.to('$ordersUrl/o1/cancel'), isEmpty);
+      expect(find.byKey(const Key('cancel-order')), findsOneWidget);
+    });
+
+    testWidgets('a refund still on its way says so', (tester) async {
+      final cafe = await placed(tester);
+      cafe.cancel = (_) => Reply(200, {
+        ..._order('CANCELLED'),
+        'refund': {'amount_paise': 14000, 'status': 'PENDING'},
+      });
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(
+        text(tester, 'cancel-result'),
+        'Order cancelled. A refund of ₹140 is on its way.',
+      );
+    });
+
+    testWidgets('an order being prepared warns that only part is refunded', (
+      tester,
+    ) async {
+      final cafe = await placed(tester, status: 'PREPARING');
+
+      await _tap(tester, 'cancel-order');
+      expect(find.textContaining('only part of what you paid'), findsOneWidget);
+      await _tap(tester, 'confirm-cancel');
+
+      expect(cafe.server.to('$ordersUrl/o1/cancel').single.data, {
+        'version': 2,
+      });
+    });
+
+    testWidgets('a ready order cannot be cancelled from the screen', (
+      tester,
+    ) async {
+      await placed(tester, status: 'READY');
+
+      expect(find.byKey(const Key('cancel-order')), findsNothing);
+    });
+
+    testWidgets('NFR-5: a changed order shows the new refund and needs a new '
+        'confirmation with a new key', (tester) async {
+      final cafe = await placed(tester);
+      cafe.cancel = (_) => const Reply(409, {
+        'detail': {
+          'message': 'the order has changed',
+          'status': 'PREPARING',
+          'version': 2,
+          'refund_paise': 7000,
+        },
+      });
+      cafe.tracking = (_) => Reply(200, _tracked('PREPARING'));
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(
+        text(tester, 'cancel-error'),
+        'The order changed while you were looking at it. Cancelling now '
+        'refunds ₹70; check and confirm again.',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(const Key('order-status'))).data,
+        'Being prepared.',
+      );
+
+      cafe.cancel = (_) => Reply(200, {
+        ..._order('CANCELLED'),
+        'refund': {'amount_paise': 7000, 'status': 'SUCCEEDED'},
+      });
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      final [first, second] = cafe.server.to('$ordersUrl/o1/cancel').toList();
+      expect(second.data, {'version': 2});
+      expect(
+        second.headers['Idempotency-Key'],
+        isNot(first.headers['Idempotency-Key']),
+      );
+      expect(text(tester, 'cancel-result'), 'Order cancelled. ₹70 refunded.');
+    });
+
+    testWidgets('past the cut-off the reason is explained', (tester) async {
+      final cafe = await placed(tester);
+      cafe.cancel = (_) => const Reply(409, {
+        'detail': {
+          'message': 'the cancellation cut-off has passed',
+          'status': 'ACCEPTED',
+          'version': 1,
+          'refund_paise': null,
+        },
+      });
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(
+        text(tester, 'cancel-error'),
+        'It is too close to your pickup time to cancel.',
+      );
+    });
+
+    testWidgets('an order cancelled elsewhere is reported as such', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      cafe.cancel = (_) => const Reply(409, {
+        'detail': {
+          'message': 'order is CANCELLED',
+          'status': 'CANCELLED',
+          'version': 3,
+          'refund_paise': null,
+        },
+      });
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(text(tester, 'cancel-error'), 'This order is already cancelled.');
+    });
+
+    testWidgets('any other refusal says it can no longer be cancelled', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      cafe.cancel = (_) => const Reply(409, {
+        'detail': {
+          'message': 'order is READY',
+          'status': 'READY',
+          'version': 3,
+          'refund_paise': null,
+        },
+      });
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(
+        text(tester, 'cancel-error'),
+        'This order can no longer be cancelled.',
+      );
+    });
+
+    testWidgets('NFR-18: after a network failure, cancelling again reuses the '
+        'same key', (tester) async {
+      final cafe = await placed(tester);
+      cafe.cancel = (r) => throw networkFailure(r);
+
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(
+        text(tester, 'cancel-error'),
+        contains('Could not reach the server'),
+      );
+      // The interceptor already retried three times with that key.
+      expect(cafe.server.to('$ordersUrl/o1/cancel'), hasLength(4));
+
+      cafe.cancel = (_) => Reply(200, {
+        ..._order('CANCELLED'),
+        'refund': {'amount_paise': 14000, 'status': 'SUCCEEDED'},
+      });
+      await _tap(tester, 'cancel-order');
+      await _tap(tester, 'confirm-cancel');
+
+      expect(
+        cafe.server
+            .to('$ordersUrl/o1/cancel')
+            .map((r) => r.headers['Idempotency-Key'])
+            .toSet(),
+        hasLength(1),
+      );
+      expect(text(tester, 'cancel-result'), 'Order cancelled. ₹140 refunded.');
     });
   });
 
