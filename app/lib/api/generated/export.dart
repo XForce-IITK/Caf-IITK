@@ -23,6 +23,7 @@ export 'models/menu_item_out.dart';
 export 'models/menu_out.dart';
 export 'models/not_bookable_reason.dart';
 export 'models/not_orderable_reason.dart';
+export 'models/order_detail_out.dart';
 export 'models/order_out.dart';
 export 'models/order_status.dart';
 export 'models/place_order_request.dart';
@@ -39,6 +40,7 @@ export 'models/slot_availability_out.dart';
 export 'models/slot_list_out.dart';
 export 'models/slot_out.dart';
 export 'models/token_pair.dart';
+export 'models/transition_out.dart';
 export 'models/user_out.dart';
 export 'models/validation_error.dart';
 // Root client

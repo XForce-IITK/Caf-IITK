@@ -328,15 +328,6 @@ class OrderService:
         )
 
     def _view(self, order_id: uuid.UUID) -> OrderOut:
-        order = self.repo.get_order(order_id)
-        snapshot = self.repo.latest_snapshot(order_id)
-        return OrderOut(
-            id=order.id,
-            status=order.status,
-            slot_id=order.slot_id,
-            version=order.version,
-            paid_paise=order.paid_paise,
-            subsidy_applied=order.subsidy_applied,
-            price=QuoteOut.model_validate(snapshot.breakdown),
-            created_at=order.created_at,
+        return OrderOut.from_rows(
+            self.repo.get_order(order_id), self.repo.latest_snapshot(order_id)
         )

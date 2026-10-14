@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,13 +15,14 @@ from app.modules.ordering.idempotency import (
     RequestInProgressError,
 )
 from app.modules.ordering.retry import TransientFailureError
-from app.modules.ordering.schemas import OrderOut, PlaceOrderRequest
+from app.modules.ordering.schemas import OrderDetailOut, OrderOut, PlaceOrderRequest
 from app.modules.ordering.service import (
     MenuNotOpenError,
     OrderService,
     PriceChangedError,
     UnavailableError,
 )
+from app.modules.ordering.tracking import OrderNotFoundError, OrderTrackingService
 from app.modules.payments.gateway import PaymentGateway
 from app.modules.payments.mockpay_gateway import get_payment_gateway
 from app.modules.pricing.service import QuantityLimitError, SlotNotFoundError, UnknownItemsError
@@ -101,3 +103,26 @@ def place_order(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Busy, try again", headers={"Retry-After": "1"}
         ) from None
+
+
+@router.get(
+    "/orders/{order_id}",
+    responses={
+        403: {"description": "Only Students track orders"},
+        404: {"description": "No such order, or it belongs to another Student"},
+    },
+)
+def get_order(
+    order_id: uuid.UUID,
+    user: Annotated[User, Depends(require_permission(Permission.VIEW_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+) -> OrderDetailOut:
+    """FR-40: the order's current status and every transition so far, oldest first.
+
+    The client polls this every P-POLL while the order is not finished. Another
+    Student's order answers 404 and is logged as a security event (FR-7).
+    """
+    try:
+        return OrderTrackingService(session).get_for_student(user, order_id)
+    except OrderNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
