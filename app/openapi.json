@@ -531,6 +531,132 @@
         "title": "MenuOut",
         "type": "object"
       },
+      "ModificationQuoteOut": {
+        "description": "UC-12 step 3: the new price and its difference from what was paid.",
+        "properties": {
+          "difference_paise": {
+            "title": "Difference Paise",
+            "type": "integer"
+          },
+          "paid_paise": {
+            "title": "Paid Paise",
+            "type": "integer"
+          },
+          "quote": {
+            "$ref": "#/components/schemas/QuoteOut"
+          }
+        },
+        "required": [
+          "quote",
+          "paid_paise",
+          "difference_paise"
+        ],
+        "title": "ModificationQuoteOut",
+        "type": "object"
+      },
+      "ModifiedOrderOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "difference_paise": {
+            "title": "Difference Paise",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "paid_paise": {
+            "title": "Paid Paise",
+            "type": "integer"
+          },
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "refund": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RefundOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "subsidy_applied": {
+            "title": "Subsidy Applied",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "slot_id",
+          "version",
+          "paid_paise",
+          "subsidy_applied",
+          "price",
+          "created_at",
+          "difference_paise",
+          "refund"
+        ],
+        "title": "ModifiedOrderOut",
+        "type": "object"
+      },
+      "ModifyOrderRequest": {
+        "additionalProperties": false,
+        "description": "The complete new cart and slot (UC-12), as quoted, and the version the Student saw.",
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "quoted_payable_paise": {
+            "minimum": 0.0,
+            "title": "Quoted Payable Paise",
+            "type": "integer"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot_id",
+          "lines",
+          "version",
+          "quoted_payable_paise"
+        ],
+        "title": "ModifyOrderRequest",
+        "type": "object"
+      },
       "NotBookableReason": {
         "enum": [
           "CLOSED",
@@ -2371,6 +2497,83 @@
         "tags": [
           "ordering"
         ]
+      },
+      "patch": {
+        "description": "FR-35, FR-36: replace an ACCEPTED order's items and/or slot before slot start -\nP-CUTOFF, atomically. The order is re-priced as snapshot v(n+1); a higher price is\ncharged for the difference, a lower one refunded exactly once (FR-39).\n\n`lines` is the complete new cart. A repeat with the same key returns the same result.",
+        "operationId": "modify_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModifyOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModifiedOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "402": {
+            "description": "The price difference was declined or timed out; the order is exactly as before"
+          },
+          "403": {
+            "description": "Only Students modify their own orders"
+          },
+          "404": {
+            "description": "No such order or slot, or the order is not the caller's"
+          },
+          "409": {
+            "description": "The order is not ACCEPTED, the cut-off has passed, the version is stale, an item or the slot is unavailable (named in the body), the price differs from the quote (fresh quote in the body), the order changed while the difference was being charged, or the original request with this key is still in progress"
+          },
+          "422": {
+            "description": "Unknown item, quantity above P-MAX_QTY, a slot on another day, nothing to change, or the idempotency key was already used with a different request"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was changed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Modify Order",
+        "tags": [
+          "ordering"
+        ]
       }
     },
     "/api/v1/orders/{order_id}/cancel": {
@@ -2444,6 +2647,64 @@
           }
         ],
         "summary": "Cancel Order",
+        "tags": [
+          "ordering"
+        ]
+      }
+    },
+    "/api/v1/orders/{order_id}/quote": {
+      "post": {
+        "description": "UC-12 step 3: what the order would cost with this cart and slot, and the\ndifference from what was paid. Read-only; nothing is reserved.",
+        "operationId": "quote_order_modification",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModificationQuoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Students modify their own orders"
+          },
+          "404": {
+            "description": "No such order or slot, or the order is not the caller's"
+          },
+          "422": {
+            "description": "Unknown item, or quantity above P-MAX_QTY"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Quote Order Modification",
         "tags": [
           "ordering"
         ]
