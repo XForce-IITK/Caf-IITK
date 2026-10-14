@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.models.agent import Proposal
+from app.models.capacity import Slot
 from app.models.enums import OrderStatus, ProposalType
 from app.modules.kitchen.domain import order_item_totals
 from app.modules.kitchen.repository import KitchenRepository
@@ -47,11 +48,14 @@ class KitchenService:
 
         The current slot is the service date's earliest slot that has not ended:
         the one in progress, or before service the first one. The next slot is the
-        one after it.
+        one after it. Earlier slots that still have open orders are listed apart,
+        so a READY order can be marked picked up or no-show after its slot ends
+        (FR-43: no-show only after slot end + P-NOSHOW_GRACE).
         """
         with self.session.begin():
             slots = self.repo.unfinished_slots(now.date(), now, QUEUE_SLOTS)
-            slot_ids = [slot.id for slot in slots]
+            earlier = self.repo.ended_slots_with_orders(now.date(), now, QUEUE_STATUSES)
+            slot_ids = [slot.id for slot in [*earlier, *slots]]
             orders = self.repo.orders_in_slots(slot_ids, QUEUE_STATUSES)
             lines = self.repo.lines_with_names([order.id for order, _ in orders])
             proposals = self.repo.approved_prep_priorities(slot_ids)
@@ -80,25 +84,24 @@ class KitchenService:
                 for order_line in order_lines:
                     counts[order.slot_id][order_line.item_id] += order_line.qty
 
-        result = []
-        for slot in slots:
+        def slot_queue(slot: Slot) -> SlotQueueOut:
             proposal = proposals.get(slot.id)
             priority = _priority(proposal)
             slot_counts = counts[slot.id]
-            result.append(
-                SlotQueueOut(
-                    slot_id=slot.id,
-                    starts_at=slot.starts_at,
-                    ends_at=slot.ends_at,
-                    orders=orders_by_slot[slot.id],
-                    item_totals=[
-                        QueueLineOut(item_id=item_id, name=names[item_id], qty=slot_counts[item_id])
-                        for item_id in order_item_totals(slot_counts, names, priority)
-                    ],
-                    totals_order=TotalsOrder.COUNT
-                    if priority is None
-                    else TotalsOrder.PREP_PRIORITY,
-                    proposal_id=None if priority is None or proposal is None else proposal.id,
-                )
+            return SlotQueueOut(
+                slot_id=slot.id,
+                starts_at=slot.starts_at,
+                ends_at=slot.ends_at,
+                orders=orders_by_slot[slot.id],
+                item_totals=[
+                    QueueLineOut(item_id=item_id, name=names[item_id], qty=slot_counts[item_id])
+                    for item_id in order_item_totals(slot_counts, names, priority)
+                ],
+                totals_order=TotalsOrder.COUNT if priority is None else TotalsOrder.PREP_PRIORITY,
+                proposal_id=None if priority is None or proposal is None else proposal.id,
             )
-        return KitchenQueueOut(slots=result)
+
+        return KitchenQueueOut(
+            slots=[slot_queue(slot) for slot in slots],
+            earlier_slots=[slot_queue(slot) for slot in earlier],
+        )

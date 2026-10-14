@@ -26,6 +26,23 @@ class KitchenRepository:
             )
         )
 
+    def ended_slots_with_orders(
+        self, service_date: date, now: datetime, statuses: tuple[OrderStatus, ...]
+    ) -> list[Slot]:
+        """The date's slots that have ended but still have orders in `statuses`, earliest first."""
+        open_order = select(Order.id).where(Order.slot_id == Slot.id, Order.status.in_(statuses))
+        return list(
+            self.session.scalars(
+                select(Slot)
+                .where(
+                    Slot.service_date == service_date,
+                    Slot.ends_at <= now,
+                    open_order.exists(),
+                )
+                .order_by(Slot.starts_at)
+            )
+        )
+
     def orders_in_slots(
         self, slot_ids: list[uuid.UUID], statuses: tuple[OrderStatus, ...]
     ) -> list[tuple[Order, datetime]]:

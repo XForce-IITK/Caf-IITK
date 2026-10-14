@@ -458,6 +458,13 @@
       "KitchenQueueOut": {
         "description": "FR-42: the current slot, then the next one; fewer near the end of service.",
         "properties": {
+          "earlier_slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotQueueOut"
+            },
+            "title": "Earlier Slots",
+            "type": "array"
+          },
           "slots": {
             "items": {
               "$ref": "#/components/schemas/SlotQueueOut"
@@ -467,7 +474,8 @@
           }
         },
         "required": [
-          "slots"
+          "slots",
+          "earlier_slots"
         ],
         "title": "KitchenQueueOut",
         "type": "object"
