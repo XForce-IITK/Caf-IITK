@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 
 from sqlalchemy import and_, func, select
@@ -34,6 +35,19 @@ class MenuItemRepository:
         self.session.flush()
         self.session.refresh(item)  # load server defaults (status, unavailable)
         return item
+
+    def lock(self, item_id: uuid.UUID) -> MenuItem | None:
+        """The item locked so concurrent flag changes serialise.
+
+        FOR NO KEY UPDATE, because placing an order takes FOR KEY SHARE on the item
+        through the order_lines foreign key; flagging must not wait for those.
+        """
+        return self.session.scalars(
+            select(MenuItem)
+            .where(MenuItem.id == item_id)
+            .with_for_update(key_share=True)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
 
     def list_active_with_available(self, service_date: date) -> list[tuple[MenuItem, int]]:
         """ACTIVE items with their available portions for the date (0 if none were set)."""

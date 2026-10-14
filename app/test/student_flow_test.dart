@@ -79,6 +79,29 @@ Map<String, Object?> _order(String status) {
   };
 }
 
+Map<String, Object?> _step(String? from, String to, String at, [String? role]) {
+  return {
+    'from_status': from,
+    'to_status': to,
+    'at': at,
+    'actor_role': role,
+    'reason': null,
+  };
+}
+
+/// The order as GET /orders/{id} returns it, with history up to [status].
+Map<String, Object?> _tracked(String status) {
+  final steps = [
+    _step(null, 'PENDING_PAYMENT', '2026-10-06T05:00:00Z', 'STUDENT'),
+    _step('PENDING_PAYMENT', 'ACCEPTED', '2026-10-06T05:00:01Z'),
+    _step('ACCEPTED', 'PREPARING', '2026-10-06T06:31:00Z', 'KITCHEN'),
+    _step('PREPARING', 'READY', '2026-10-06T06:40:00Z', 'KITCHEN'),
+    _step('READY', 'PICKED_UP', '2026-10-06T06:50:00Z', 'KITCHEN'),
+  ];
+  final reached = steps.indexWhere((step) => step['to_status'] == status);
+  return {..._order(status), 'history': steps.sublist(0, reached + 1)};
+}
+
 /// caf-api as the Student flow sees it. Tests replace [placeOrder] and the
 /// other handlers to script a scenario.
 class _Cafe {
@@ -103,6 +126,8 @@ class _Cafe {
   Reply Function(Seen request) quote = (_) => Reply(200, _quote());
   Reply Function(Seen request) placeOrder = (_) =>
       Reply(201, _order('ACCEPTED'));
+  Reply Function(Seen request) tracking = (_) =>
+      Reply(200, _tracked('ACCEPTED'));
   final delays = <Duration>[];
 
   _Cafe() {
@@ -116,6 +141,7 @@ class _Cafe {
       slotsUrl => Reply(200, {'service_date': '2026-10-06', 'slots': slots}),
       quotesUrl => quote(r),
       ordersUrl => placeOrder(r),
+      '$ordersUrl/o1' => tracking(r),
       _ => const Reply(204),
     },
   );
@@ -549,6 +575,111 @@ void main() {
       find.text('No pickup slots have been set up for today yet.'),
       findsOneWidget,
     );
+  });
+
+  group('order tracking (FR-40)', () {
+    Future<_Cafe> placed(WidgetTester tester) async {
+      final cafe = _Cafe();
+      await cafe.open(tester);
+      await _reviewTwoThalis(tester);
+      await _tap(tester, 'confirm');
+      return cafe;
+    }
+
+    String status(WidgetTester tester) {
+      return tester.widget<Text>(find.byKey(const Key('order-status'))).data!;
+    }
+
+    testWidgets('the confirmed order shows its status and history', (
+      tester,
+    ) async {
+      await placed(tester);
+
+      expect(status(tester), 'Confirmed. The kitchen has not started it yet.');
+      expect(find.text('10:30'), findsWidgets);
+      expect(find.text('Order placed'), findsOneWidget);
+      expect(find.text('Payment confirmed'), findsOneWidget);
+    });
+
+    testWidgets('TC-US29-AC1: READY set by the kitchen appears within '
+        'P-POLL', (tester) async {
+      final cafe = await placed(tester);
+      final before = cafe.server.to('$ordersUrl/o1').length;
+
+      cafe.tracking = (_) => Reply(200, _tracked('READY'));
+      await tester.pump(const Duration(seconds: 9));
+      expect(cafe.server.to('$ordersUrl/o1'), hasLength(before));
+
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(status(tester), 'Ready. Collect it during your pickup slot.');
+      expect(find.text('Preparation started by the kitchen'), findsOneWidget);
+      expect(find.text('Ready for pickup by the kitchen'), findsOneWidget);
+      expect(find.text('12:01'), findsOneWidget);
+      expect(find.text('12:10'), findsOneWidget);
+    });
+
+    testWidgets('polling stops once the order is finished', (tester) async {
+      final cafe = await placed(tester);
+      cafe.tracking = (_) => Reply(200, _tracked('PICKED_UP'));
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(status(tester), 'Picked up. Enjoy your meal.');
+      final requests = cafe.server.to('$ordersUrl/o1').length;
+
+      await tester.pump(const Duration(minutes: 1));
+
+      expect(cafe.server.to('$ordersUrl/o1'), hasLength(requests));
+    });
+
+    testWidgets('a failed refresh keeps the last status and tries again', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      cafe.tracking = (r) => throw networkFailure(r);
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(status(tester), 'Confirmed. The kitchen has not started it yet.');
+      expect(find.textContaining('Could not refresh'), findsOneWidget);
+
+      cafe.tracking = (_) => Reply(200, _tracked('PREPARING'));
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(status(tester), 'Being prepared.');
+      expect(find.textContaining('Could not refresh'), findsNothing);
+    });
+
+    testWidgets('a status that cannot be loaded can be retried', (
+      tester,
+    ) async {
+      final cafe = _Cafe()..tracking = (_) => const Reply(500);
+      await cafe.open(tester);
+      await _reviewTwoThalis(tester);
+      await _tap(tester, 'confirm');
+      expect(
+        find.textContaining('Could not load the order status'),
+        findsOneWidget,
+      );
+
+      cafe.tracking = (_) => Reply(200, _tracked('ACCEPTED'));
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+
+      expect(status(tester), 'Confirmed. The kitchen has not started it yet.');
+    });
+
+    testWidgets('leaving the order stops polling', (tester) async {
+      final cafe = await placed(tester);
+      await _tap(tester, 'place-another');
+      final requests = cafe.server.to('$ordersUrl/o1').length;
+
+      await tester.pump(const Duration(minutes: 1));
+
+      expect(cafe.server.to('$ordersUrl/o1'), hasLength(requests));
+    });
   });
 
   for (final width in [360.0, 1920.0]) {
