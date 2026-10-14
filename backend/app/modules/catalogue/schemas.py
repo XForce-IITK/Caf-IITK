@@ -21,6 +21,13 @@ class ItemCreate(BaseModel):
     price_paise: Annotated[int, Field(ge=MIN_PRICE_PAISE, le=MAX_PRICE_PAISE)]
 
 
+class FlagRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # FR-11: why the item is paused, e.g. "gas cylinder ran out".
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+
 class ItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -31,6 +38,7 @@ class ItemOut(BaseModel):
     price_paise: int
     status: ItemStatus
     unavailable: bool
+    unavailable_reason: str | None
 
 
 class MenuItemOut(BaseModel):
