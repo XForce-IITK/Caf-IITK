@@ -15,9 +15,16 @@ from app.modules.ordering.idempotency import (
     RequestInProgressError,
 )
 from app.modules.ordering.retry import TransientFailureError
-from app.modules.ordering.schemas import OrderDetailOut, OrderOut, PlaceOrderRequest
+from app.modules.ordering.schemas import (
+    CancelledOrderOut,
+    CancelOrderRequest,
+    OrderDetailOut,
+    OrderOut,
+    PlaceOrderRequest,
+)
 from app.modules.ordering.service import (
     MenuNotOpenError,
+    OrderConflictError,
     OrderService,
     PriceChangedError,
     UnavailableError,
@@ -126,3 +133,62 @@ def get_order(
         return OrderTrackingService(session).get_for_student(user, order_id)
     except OrderNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
+
+
+@router.post(
+    "/orders/{order_id}/cancel",
+    responses={
+        403: {"description": "Only Students cancel their own orders"},
+        404: {"description": "No such order, or not the caller's"},
+        409: {
+            "description": "The order is READY or terminal, the cut-off has passed, the "
+            "version is stale (current status, version and refund in the body), or the "
+            "original request with this key is still in progress"
+        },
+        422: {"description": "The idempotency key was already used with a different request"},
+        503: {"description": "Could not complete after retries; nothing was changed"},
+    },
+)
+def cancel_order(
+    order_id: uuid.UUID,
+    body: CancelOrderRequest,
+    idempotency_key: IdempotencyKeyHeader,
+    user: Annotated[User, Depends(require_permission(Permission.MANAGE_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+    gateway: Annotated[PaymentGateway, Depends(get_payment_gateway)],
+) -> CancelledOrderOut:
+    """FR-37, FR-39: cancel from ACCEPTED (100 % refund, seat and portions restored) or
+    PREPARING (P-LATE_REFUND_PCT refund, seat restored) before slot start - P-CUTOFF.
+
+    `version` is the order version the Student confirmed. A repeat with the same key
+    returns the same result; there is never a second refund.
+    """
+    try:
+        return OrderService(session, gateway).cancel(
+            user, order_id, body, idempotency_key, clock.now()
+        )
+    except OrderNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
+    except IdempotencyKeyReusedError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Idempotency key already used with a different request",
+        ) from None
+    except RequestInProgressError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The original request is still in progress"
+        ) from None
+    except OrderConflictError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": exc.reason,
+                "status": exc.status.value,
+                "version": exc.version,
+                "refund_paise": exc.refund_paise,
+            },
+        ) from None
+    except TransientFailureError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Busy, try again", headers={"Retry-After": "1"}
+        ) from None

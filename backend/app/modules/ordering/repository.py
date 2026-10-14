@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.capacity import DailyInventory, Slot
 from app.models.catalogue import MenuItem
+from app.models.enums import PaymentCause, PaymentKind, PaymentStatus
 from app.models.identity import User
 from app.models.ordering import Order, OrderLine, OrderTransition, Payment, PriceSnapshot
 from app.models.platform import Setting
@@ -109,6 +110,29 @@ class OrderRepository:
             .where(Payment.id == payment_id)
             .execution_options(populate_existing=True)
         ).one()
+
+    def get_auth_payment(self, order_id: uuid.UUID) -> Payment:
+        """The approved authorisation that paid for the order at placement."""
+        return self.session.scalars(
+            select(Payment).where(
+                Payment.order_id == order_id,
+                Payment.kind == PaymentKind.AUTH,
+                Payment.cause == PaymentCause.CREATE,
+                Payment.status == PaymentStatus.SUCCEEDED,
+            )
+        ).one()
+
+    def find_cancel_refund(self, order_id: uuid.UUID) -> Payment | None:
+        """At most one exists: uq_payments_cancel_refund (FR-39)."""
+        return self.session.scalars(
+            select(Payment)
+            .where(
+                Payment.order_id == order_id,
+                Payment.kind == PaymentKind.REFUND,
+                Payment.cause == PaymentCause.CANCEL,
+            )
+            .execution_options(populate_existing=True)
+        ).one_or_none()
 
     def latest_snapshot(self, order_id: uuid.UUID) -> PriceSnapshot:
         return self.session.scalars(
