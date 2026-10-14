@@ -405,7 +405,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
   - The PR was approved by a teammate (Shashi) with no change requests, then merged.
 - **What changed:** E60 and E59 were found and fixed before the PR; E59 also changes how cancel sends refunds. E61 occurred during the breakage checks. E62, a lock-order defect, was found later and fixed in #54.
 - **Known limits, stated in the PR:** the sweeper that releases a modification's holds after a crash, and the retrier for unacknowledged refunds and voids, are not built.
-- **Outcome:** accepted; follow-up fix #54 approved by a teammate (Suryansh), merge pending.
+- **Outcome:** accepted; follow-up fix #54 approved by a teammate (Suryansh), then merged.
 
 ### The rush never oversells (CAFIITK-155, US-30) — AC3 and AC4
 
@@ -439,7 +439,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **Asked for:** the AC4 workload failed once and reported deadlocks while 159 was being verified. The author had earlier asked that failures be diagnosed and explained before moving on.
 - **AI produced:** the cause, from the PostgreSQL log (E62). It wrote a test that reproduced the deadlock on every run *before* changing the code, then made the fix: settling locks both slots in ascending id order.
 - **How it was checked:** the regression test, 3 passes of 3 after the fix. The AC4 workload reported 0 deadlocks in 2 runs of 2, against 1–2 per run before. Full suite run. The PR was approved by a teammate (Suryansh) with no change requests.
-- **Outcome:** pending merge.
+- **Outcome:** accepted.
 
 ### Flag an item temporarily unavailable (CAFIITK-134, US-09)
 
