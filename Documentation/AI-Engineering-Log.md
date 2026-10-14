@@ -66,6 +66,13 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E54 | The AI said 27 requirement tasks could be closed; its own table listed 29 | Arithmetic error | Counting the transitions made | Corrected in the report |
 | E55 | A background wait for CI used a `gh` option this version does not have, so it could never finish | Tooling defect | Noticed while merging by hand | Stopped; later waits checked differently |
 | E56 | For an order that does not exist, cancel and modify log a security event while tracking does not | Design inconsistency | Reading the merged cancel and modify code | Flagged in the PR; team decision pending |
+| E57 | In the first version of cancel, the 404 path read the Student's account after the transaction had rolled back. That silently opened a new transaction, so writing the security event failed | Implementation defect | The new 404 tests failed | The Student's id and role are read before the transaction; tests pass |
+| E58 | The client generator script deletes the generated client before generating it, so when it failed on an out-of-date local Flutter SDK it left the client deleted | Tooling defect | The working tree showed the generated files deleted | Files restored from git, local Flutter pinned to the CI version, then regenerated. The script itself is unchanged |
+| E59 | Cancel refunded only against the order's first payment authorisation. mockpay refuses a refund larger than one authorisation, so after a price-raising modify a full cancel would have stayed PENDING | **Design gap** | Designing modify, then shown against real mockpay with a deliberately broken split | Refunds are split across the order's authorisations, oldest first; test against real mockpay |
+| E60 | Re-pricing an order for a modify counted the order itself as "another subsidised order today", so it would lose its own subsidy | **Specification gap** (FR-24 step 4 does not cover re-pricing) | Reading the pricing code before writing modify | The order being re-priced is excluded from the check; test added |
+| E61 | While deliberately breaking code to check that tests fail, the AI reverted a change with `git checkout`, which also discarded an uncommitted change in the same file | Process error | Caught by `git diff` straight after | Change re-applied and verified; later checks restore from backup copies, never from git |
+| E62 | Settling a price-raising modify that moves the order to another slot locked the slots out of the canonical order (through the foreign-key check on `orders.slot_id`), so opposite moves could deadlock. Merged in #44 | **Concurrency defect** | The US-30 AC4 mixed workload reported 1–2 deadlocks per run; the PostgreSQL log showed the cycle | Both slots locked in ascending id order; a regression test that deadlocked on every run before the fix; 0 deadlocks after (#54) |
+| E63 | An intermittent failure of the US-30 AC1 rush test ("server closed the connection") was first put down to machine load before there was evidence | Unverified attribution | The author asked what caused it and whether it was safe | Investigated with container and Docker logs: no crash, out-of-memory or restart found. Cause still unknown; reported as such in #39 |
 
 ---
 
@@ -342,3 +349,83 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** a reassignment, a revised sprint plan, and a review of every open requirement task against the acceptance tests on `develop`.
 - **What changed:** the AI first balanced on open work only, which put most of the reassigned work on the author. The author asked for the whole sprint to be balanced instead, and two issues were moved again (E52). Of the requirement tasks, 29 were moved to Done; four were left for their owners to confirm, and the rest were listed with what each still needs.
 - **Outcome:** accepted by the author and applied in Jira.
+
+### Cancel an order (CAFIITK-153, US-28)
+
+- **Asked for:** `POST /orders/{id}/cancel` with the right refund and resource effects (FR-21, FR-37, FR-39). Following the team's branch, PR and review rules.
+- **AI produced:**
+  - One transaction checks ownership, state, the cut-off and the order version. It applies the cancel through the order state machine, and writes exactly one refund record (backed by the partial unique index). The refund is sent to the payment gateway only after commit.
+  - A stale version gets 409 with the new state and the refund that would now apply, so the Student can confirm again.
+  - Another Student's order gets 404 and a security event. Kitchen Staff get 403, which also closed US-04 AC2.
+  - The regenerated Dart client.
+- **How it was checked:**
+  - 17 tests against PostgreSQL, including concurrent cancels and a refund that mockpay does not acknowledge. The full suite was run several times.
+  - One intermittent failure, in the US-30 rush test, was investigated at the author's request rather than rerun until it passed (E63).
+  - Rebased three times as teammates' PRs merged; the generated client was regenerated each time rather than merged by hand.
+  - The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** E57 was fixed before the PR. E58 occurred while regenerating the client.
+- **Known limits, stated in the PR:** no job yet retries refunds left PENDING; refunds after a modify needed more work (later E59).
+- **Outcome:** accepted.
+
+### Portions follow the order lifecycle (CAFIITK-138, US-13) — AC3 and AC4
+
+- **Asked for:** the two acceptance tests carried over from Sprint 1, now that cancel exists.
+- **AI produced:** two tests. Cancelling an accepted order of two returns both portions; cancelling one in preparation returns none. The kitchen endpoint was not merged yet, so preparation was reached through the state machine, as the plan allows.
+- **How it was checked:** the full suite. The AC4 test was shown to be real by temporarily making the state machine return portions from preparation: the test failed, and the change was reverted. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **Outcome:** accepted; the story is complete.
+
+### Modify an order (CAFIITK-152, US-27)
+
+- **Asked for:** `PATCH /orders/{id}`: change items and/or slot atomically before the cut-off, re-price, and settle the difference (FR-35, FR-36, FR-39).
+- **AI produced:**
+  - The same reserve, authorise, confirm pattern as placement. One transaction takes only the extra portions and the new seat while the old ones are still held, re-prices, and records the modification as holding.
+  - A lower or equal price is applied in that transaction, with exactly one refund of the difference.
+  - A higher price is charged with no transaction open, then applied, or fully released if the payment is declined or times out.
+  - A read-only endpoint that prices a change before the Student confirms it.
+  - The regenerated client.
+- **Design choices beyond the requirements, listed in the PR:**
+  - A changed order is recorded in its history as an ACCEPTED → ACCEPTED transition.
+  - A slot on another day, or a request that changes nothing, gets 422.
+  - A declined difference gets 402.
+- **How it was checked:**
+  - 32 tests, including one against real mockpay.
+  - Three deliberate breakages, each caught by the matching test: the subsidy exclusion removed, refunds not split, holds not released after a decline.
+  - Error-path tests were added when router coverage dropped to 79 %.
+  - The PR was approved by a teammate (Shashi) with no change requests, then merged.
+- **What changed:** E60 and E59 were found and fixed before the PR; E59 also changes how cancel sends refunds. E61 occurred during the breakage checks. E62, a lock-order defect, was found later and fixed in #54.
+- **Known limits, stated in the PR:** the sweeper that releases a modification's holds after a crash, and the retrier for unacknowledged refunds and voids, are not built.
+- **Outcome:** accepted; follow-up fix #54 approved by a teammate (Suryansh), merge pending.
+
+### The rush never oversells (CAFIITK-155, US-30) — AC3 and AC4
+
+- **Asked for:** the two acceptance tests carried over from Sprint 1, and an extended load generator.
+- **AI produced:**
+  - **AC3:** on 30 orders, a modify and a cancel arrive together at different API processes. Exactly one of each pair must succeed, and the database must match the winner. Half the modifies take the payment path, half the refund path.
+  - **AC4:** a 60-second random workload of place, modify and cancel by 40 Students across both processes. No server errors are allowed, and afterwards every counter must equal what the orders hold. PostgreSQL's deadlock count is reported.
+  - The load generator gained both, plus a command-line option for the Docker Compose stack.
+- **How it was checked:** two deliberate breakages, each caught by the matching test: cancel ignoring the version, a modify keeping its old seat. The full suite was run. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** the deadlock count in AC4 later exposed E62.
+- **Outcome:** accepted; the story is complete.
+
+### Move orders through the kitchen (CAFIITK-159, US-34)
+
+- **Asked for:** the kitchen's Start, Ready, Picked Up and No-show transitions (FR-29, FR-43). Reassigned to the author when the sprint was revised.
+- **AI produced:**
+  - `POST /kitchen/orders/{id}/transitions` for Kitchen Staff and the Administrator, applied through the order state machine.
+  - Any other move gets 409 and changes nothing.
+  - A no-show is refused until the grace period after the slot has passed; when allowed it refunds nothing and restores nothing.
+  - Every move is recorded with the staff member as actor and bumps the order version.
+  - The regenerated client.
+- **How it was checked:**
+  - 12 tests, including one that a Student cancelling from an older view is told the order is now in preparation.
+  - Two deliberate breakages, each caught by the matching test: the grace check removed, a no-show releasing resources.
+  - The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** before the PR, the AI checked the open kitchen-screen PR (#50) for any request shape it assumed; there was none. The time a no-show becomes allowed is reported in IST, like other service times.
+- **Outcome:** accepted.
+
+### Slot lock order in modify (CAFIITK-152 follow-up, #54)
+
+- **Asked for:** the AC4 workload failed once and reported deadlocks while 159 was being verified. The author had earlier asked that failures be diagnosed and explained before moving on.
+- **AI produced:** the cause, from the PostgreSQL log (E62). It wrote a test that reproduced the deadlock on every run *before* changing the code, then made the fix: settling locks both slots in ascending id order.
+- **How it was checked:** the regression test, 3 passes of 3 after the fix. The AC4 workload reported 0 deadlocks in 2 runs of 2, against 1–2 per run before. Full suite run. The PR was approved by a teammate (Suryansh) with no change requests.
+- **Outcome:** pending merge.
