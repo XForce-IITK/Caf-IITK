@@ -1,7 +1,7 @@
 """US-30 (NFR-1, NFR-2, NFR-4, NFR-5, NFR-13) acceptance tests TC-US30-AC1..AC4.
 
-AC3 and AC4 exercise modify and cancel, which arrive in Sprint 2; they are
-skipped here so the gap stays visible in every test report.
+All four run against two caf-api processes and mockpay (`live_stack`), so the
+locks and version checks are proven across processes (NFR-13).
 """
 
 import uuid
@@ -117,11 +117,25 @@ def test_tc_us30_ac2_database_refuses_a_count_the_application_should_never_write
         assert (stock.total, stock.allocated, slot.booked) == (50, 50, 30)
 
 
-@pytest.mark.skip(reason="needs the modify and cancel endpoints (Sprint 2)")
-def test_tc_us30_ac3_concurrent_modify_and_cancel_exactly_one_succeeds() -> None:
-    """NFR-5: one ACCEPTED order, a modify and a cancel together; one wins, the other gets 409."""
+def test_tc_us30_ac3_concurrent_modify_and_cancel_exactly_one_succeeds(
+    live_stack: LiveStack, clean_db: Engine
+) -> None:
+    """NFR-5: on each of 30 ACCEPTED orders a modify and a cancel arrive together, at
+    different processes; one wins, the other gets 409, and the database agrees."""
+    report = loadgen.race_modify_and_cancel(live_stack.api_urls, clean_db, orders=30)
+
+    assert report.ok, report.summary()
+    assert report.modify_won + report.cancel_won == 30
 
 
-@pytest.mark.skip(reason="needs the modify and cancel endpoints (Sprint 2)")
-def test_tc_us30_ac4_mixed_workload_has_no_unhandled_deadlock() -> None:
+def test_tc_us30_ac4_mixed_workload_has_no_unhandled_deadlock(
+    live_stack: LiveStack, clean_db: Engine
+) -> None:
     """NFR-4: 60 seconds of mixed create, modify and cancel without an unhandled deadlock."""
+    report = loadgen.run_mixed(live_stack.api_urls, clean_db, seconds=60)
+
+    print(report.summary())
+    assert report.ok, report.summary()
+    # Every kind of request was exercised, and succeeded at least once.
+    for action, success in [("place", 201), ("modify", 200), ("cancel", 200)]:
+        assert report.requests[f"{action}:{success}"] > 0, report.summary()
