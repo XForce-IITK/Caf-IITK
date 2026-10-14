@@ -29,6 +29,7 @@ JOBS: list[Job] = []
 def all_jobs() -> list[Job]:
     """Every job the worker runs; modules are imported here so the worker owns the list."""
     from app.modules.agent.jobs import AGENT_JOBS
+    from app.modules.ordering.jobs import ORDERING_JOBS
     from app.modules.proposals.jobs import PROPOSAL_JOBS
 
-    return [*JOBS, *AGENT_JOBS, *PROPOSAL_JOBS]
+    return [*JOBS, *AGENT_JOBS, *PROPOSAL_JOBS, *ORDERING_JOBS]
