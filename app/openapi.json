@@ -1,6 +1,167 @@
 {
   "components": {
     "schemas": {
+      "AgentRunDetailOut": {
+        "description": "FR-63: the run, its report (FR-52), its proposals and its tool-call log (FR-62).",
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ProposalOut"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "report": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Report"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentRunStatus"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolCallOut"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/AgentTrigger"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "status",
+          "source",
+          "started_at",
+          "finished_at",
+          "report",
+          "proposals",
+          "tool_calls"
+        ],
+        "title": "AgentRunDetailOut",
+        "type": "object"
+      },
+      "AgentRunOut": {
+        "properties": {
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentSource"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AgentRunStatus"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/AgentTrigger"
+          }
+        },
+        "required": [
+          "id",
+          "trigger",
+          "status",
+          "source",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "AgentRunOut",
+        "type": "object"
+      },
+      "AgentRunStatus": {
+        "enum": [
+          "QUEUED",
+          "RUNNING",
+          "SUCCEEDED",
+          "FAILED"
+        ],
+        "title": "AgentRunStatus",
+        "type": "string"
+      },
+      "AgentSource": {
+        "description": "Who produced a report or proposal: the LLM or the heuristic fallback (FR-59).",
+        "enum": [
+          "LLM",
+          "HEURISTIC"
+        ],
+        "title": "AgentSource",
+        "type": "string"
+      },
+      "AgentTrigger": {
+        "enum": [
+          "SCHEDULED",
+          "ON_DEMAND"
+        ],
+        "title": "AgentTrigger",
+        "type": "string"
+      },
       "FlagRequest": {
         "additionalProperties": false,
         "properties": {
@@ -472,6 +633,89 @@
         ],
         "title": "PlaceOrderRequest",
         "type": "object"
+      },
+      "ProposalOut": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          },
+          "target_slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Slot Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ProposalType"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "target_date",
+          "target_slot_id",
+          "payload",
+          "rationale",
+          "source",
+          "status",
+          "expires_at"
+        ],
+        "title": "ProposalOut",
+        "type": "object"
+      },
+      "ProposalStatus": {
+        "description": "FR-56: every proposal is in exactly one of these states.",
+        "enum": [
+          "PENDING",
+          "APPROVED",
+          "REJECTED",
+          "EXPIRED",
+          "INVALIDATED"
+        ],
+        "title": "ProposalStatus",
+        "type": "string"
+      },
+      "ProposalType": {
+        "enum": [
+          "DISABLE",
+          "PREP_PRIORITY",
+          "REPLENISH"
+        ],
+        "title": "ProposalType",
+        "type": "string"
       },
       "QueueLineOut": {
         "properties": {
@@ -1016,6 +1260,59 @@
         "title": "TokenPair",
         "type": "object"
       },
+      "ToolCallOut": {
+        "properties": {
+          "args": {
+            "additionalProperties": true,
+            "title": "Args",
+            "type": "object"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "result_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Summary"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "tool",
+          "args",
+          "result_summary",
+          "latency_ms",
+          "outcome"
+        ],
+        "title": "ToolCallOut",
+        "type": "object"
+      },
       "TotalsOrder": {
         "description": "How a slot's item totals are ordered (FR-42).",
         "enum": [
@@ -1159,6 +1456,120 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/agent/runs": {
+      "get": {
+        "description": "FR-63: run history, newest first.",
+        "operationId": "list_agent_runs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentRunOut"
+                  },
+                  "title": "Response List Agent Runs",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agent Runs",
+        "tags": [
+          "agent"
+        ]
+      },
+      "post": {
+        "description": "FR-50: queue an on-demand planning run; caf-worker executes it within seconds.\n\nOnly one run is in progress at a time: while one is QUEUED or RUNNING this\nanswers 409 with that run's ID.",
+        "operationId": "trigger_agent_run",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator triggers planning runs"
+          },
+          "409": {
+            "description": "A run is already in progress; `detail.running_run_id` names it"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Trigger Agent Run",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/v1/admin/agent/runs/{run_id}": {
+      "get": {
+        "description": "FR-63: one run with its report, proposals and tool-call log.",
+        "operationId": "get_agent_run",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such run"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Run",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
     "/api/v1/admin/inventory/{service_date}/{item_id}": {
       "put": {
         "description": "FR-14 / US-11: set the prepared portions of an item for a service date (0-500).",

@@ -6,6 +6,7 @@ when a new module is added.
 
 from fastapi import APIRouter
 
+from app.modules.agent.router import router as agent_router
 from app.modules.audit.router import router as audit_router
 from app.modules.catalogue.router import router as catalogue_router
 from app.modules.identity.router import router as identity_router
@@ -27,5 +28,6 @@ for module_router in (
     kitchen_router,
     payments_router,
     audit_router,
+    agent_router,
 ):
     api_router.include_router(module_router)

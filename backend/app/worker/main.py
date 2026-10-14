@@ -15,7 +15,7 @@ from typing import Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import Engine
 
-from app.worker.jobs import JOBS, Job
+from app.worker.jobs import JOBS, Job, all_jobs
 from app.worker.leader import LeaderLock
 
 log = logging.getLogger("caf.worker")
@@ -106,7 +106,7 @@ def main() -> int:
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop.set())
     try:
-        Worker(get_engine()).run(stop)
+        Worker(get_engine(), all_jobs()).run(stop)
     except LostLeadershipError:
         log.exception("stopping")
         return 1
