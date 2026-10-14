@@ -73,6 +73,15 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E61 | While deliberately breaking code to check that tests fail, the AI reverted a change with `git checkout`, which also discarded an uncommitted change in the same file | Process error | Caught by `git diff` straight after | Change re-applied and verified; later checks restore from backup copies, never from git |
 | E62 | Settling a price-raising modify that moves the order to another slot locked the slots out of the canonical order (through the foreign-key check on `orders.slot_id`), so opposite moves could deadlock. Merged in #44 | **Concurrency defect** | The US-30 AC4 mixed workload reported 1–2 deadlocks per run; the PostgreSQL log showed the cycle | Both slots locked in ascending id order; a regression test that deadlocked on every run before the fix; 0 deadlocks after (#54) |
 | E63 | An intermittent failure of the US-30 AC1 rush test ("server closed the connection") was first put down to machine load before there was evidence | Unverified attribution | The author asked what caused it and whether it was safe | Investigated with container and Docker logs: no crash, out-of-memory or restart found. Cause still unknown; reported as such in #39 |
+| E64 | The core schema sized `menu_items.unavailable_source` at 20 characters, but FR-53 records an approving proposal's ID (36 characters) there | Schema defect | Noticed while building the flag endpoint (CAFIITK-134) | Flagged in #33; widened by migration 0003 in #43 |
+| E65 | The SRS does not define the kitchen's "current slot", an order's confirmation time, or whether READY orders count in the item totals; the AI chose all three without asking | Specification ambiguity | Writing the kitchen queue | Listed for the reviewer in #35; approved without change |
+| E66 | The chosen current-slot rule (earliest slot not yet ended) dropped a slot's READY orders as soon as it ended, so a no-show, allowed only after the grace period, could never be made from the client | **Design defect** | The AI noted the risk after #35 but fixed it only when adding the transition buttons | Queue gained `earlier_slots` (today's ended slots with open orders), with a test (#55) |
+| E67 | The proposal-decisions PR stated that the format check was clean; it had not been rerun after the migration was added, and CI failed on it | **Verification flaw** (incorrect test evidence) | CI | File formatted and pushed; the AI told the author the claim had been wrong. The PR text was not edited |
+| E68 | The SRS gives no status code for an approval that fails re-validation and does not say when stale proposals expire if the worker is down; the AI chose 409 and expiry when the list is read | Specification ambiguity | Writing the decision endpoints | Listed for the reviewer in #43; approved without change |
+| E69 | The concurrent-decision test left its rows in the database, so the next test failed on a duplicate service day | Test defect | Failing test run | Test given the clean-up fixture |
+| E70 | Two client defects in the staff dashboards: the kitchen and run-history pollers kept a timer running after their screen closed, and after a refresh an order's error message could show under a different order | Implementation defect | Widget tests, before the PR | Timers cancelled when the screen closes; slot cards and orders keyed by ID |
+| E71 | #35, #43, #47, #50 and #55 were not tried by hand against the running Docker Compose stack; each PR says so | **Verification gap** | Stated in each PR | Pending: an end-to-end walkthrough before the D2 release |
+| E72 | For CAFIITK-134 the AI merged `develop` into the branch before merging, instead of rebasing as the revised sprint plan's rule 5 asks | Process lapse | The AI noticed when reading the revised plan | Later PRs rebased just before merge |
 
 ---
 
@@ -429,3 +438,69 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** the cause, from the PostgreSQL log (E62). It wrote a test that reproduced the deadlock on every run *before* changing the code, then made the fix: settling locks both slots in ascending id order.
 - **How it was checked:** the regression test, 3 passes of 3 after the fix. The AC4 workload reported 0 deadlocks in 2 runs of 2, against 1–2 per run before. Full suite run. The PR was approved by a teammate (Suryansh) with no change requests.
 - **Outcome:** pending merge.
+
+### Flag an item temporarily unavailable (CAFIITK-134, US-09)
+
+- **Asked for:** `POST` and `DELETE /items/{id}/flag` with a reason (FR-11, FR-12): the item stops being orderable, while portions and orders already placed are untouched.
+- **AI produced:**
+  - Both endpoints for Kitchen Staff and the Administrator; a Student gets 403, an unknown item 404, an item that is not ACTIVE 409.
+  - Only the flag columns change. The menu and order placement already honoured the flag, so a flagged item shows as unavailable and new orders for it get 409.
+  - Audit rows with the state before and after, in the same transaction.
+  - The item row is locked `FOR NO KEY UPDATE`: order placement holds a key-share lock on the item through `order_lines`, so a plain `FOR UPDATE` would make flagging wait for orders in flight.
+  - The regenerated client.
+- **How it was checked:** 18 tests, including the three acceptance criteria and the lock choice; the full backend and client suites. The PR records a manual check against Docker Compose. `develop` was merged in and CI rerun before merging (E72). The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** nothing after review. E64 was found here and handed to CAFIITK-165.
+- **Outcome:** accepted.
+
+### Kitchen queue (CAFIITK-158, US-33)
+
+- **Asked for:** `GET /kitchen/queue` for the current and next slot (FR-42), with AC2 reading an approved prep-priority proposal from the proposals table (FR-54). Reassigned to the author when the sprint was revised.
+- **AI produced:**
+  - A kitchen module: ACCEPTED, PREPARING and READY orders of the two slots, sorted by slot start, then confirmation time.
+  - Per-slot item totals, ordered by a pure function: the approved list first, then items it does not name by count; descending count when there is no approved proposal or its payload is malformed.
+  - The regenerated client.
+- **How it was checked:** 7 tests against PostgreSQL, covering both acceptance criteria, a superseded approval, a pending proposal that must be ignored, and a malformed payload; 100% coverage of the module; the full suites. The PR was approved by a teammate (Kshitij) with no change requests, then merged.
+- **What changed:** the open questions of E65 were listed in the PR for the reviewer. One of those choices turned out wrong (E66) and was corrected under CAFIITK-179.
+- **Outcome:** accepted; the current-slot rule was later extended (#55).
+
+### Approve or reject the agent's proposals (CAFIITK-165, US-40)
+
+- **Asked for:** `GET /admin/proposals` and approve and reject through `ProposalService` under the Administrator's identity (FR-53 – FR-57, UC-25, UC-26). Started once the agent run (CAFIITK-164) was merged.
+- **AI produced:**
+  - Approve locks the proposal, expires it if its target start has passed or a newer one superseded it, re-validates it (FR-57), then applies it, marks it APPROVED and writes the audit rows in one transaction. The change runs inside a savepoint, so a failed re-validation leaves nothing half-applied and marks the proposal INVALIDATED.
+  - Reject requires a reason. A proposal that cannot be decided answers 409 with its resulting status (E68).
+  - Superseding is done on the decision side, because the agent's role can only insert rows (consistent with E7 and E13).
+  - A worker job that expires stale proposals without blocking an Administrator who is deciding one.
+  - Migration 0003 for E64, and the regenerated client.
+- **How it was checked:**
+  - 20 tests, including all six acceptance criteria. AC6 approves through the API, then reads the kitchen queue. Also a savepoint rollback, superseding, and a concurrent approve and reject.
+  - The migration was upgraded, downgraded and upgraded again on PostgreSQL 16, with a single head.
+  - The full suites. CI caught E67; E69 was fixed before the PR.
+  - At the author's request the AI explained the migration-announcement and rebase rules before merging. The branch was rebased three times as teammates' PRs merged.
+  - The PR was approved by two teammates (Rudransh and Suryansh) with no change requests, then merged.
+- **Outcome:** accepted.
+
+### The agent cannot act beyond its authority (CAFIITK-166, US-41)
+
+- **Asked for:** the US-41 acceptance tests (FR-60, FR-61, NFR-25). AC3 needed only the database role; AC1 and AC2 waited for the agent run.
+- **AI produced:** tests only, through the real agent with a scripted model:
+  - AC1: five unregistered tools that would change prices, stock or orders are each rejected, logged and audited; prices, flags, stock, orders, seats and settings are compared before and after the run and are unchanged.
+  - AC2: an instruction planted in an item description reaches the model only as a value inside a JSON tool result. When the model obeys it, the call is rejected and its malformed proposal dropped; a valid proposal made in the same situation is only stored as PENDING.
+  - AC3: the agent's role is denied ten kinds of write.
+  - The tests reuse the agent-run fixtures; one lint rule is disabled for that file because it misreads imported fixtures.
+- **How it was checked:** 17 tests, rerun after a teammate's output-validation PR (CAFIITK-167) merged; the full suite. Whether a scripted model is a fair stand-in for a real injection was left to the reviewer (see also E50). The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **Outcome:** accepted.
+
+### Kitchen and Administrator dashboards (CAFIITK-179)
+
+- **Asked for:** the Kitchen screen (queue and transition buttons) and the Administrator screen (items, inventory, service window, agent runs and reports, proposal decisions). The author asked for everything not depending on CAFIITK-159 first, then the buttons once it merged.
+- **AI produced:**
+  - #50: the Kitchen queue, refreshed every P-POLL and kept on screen when a refresh fails. Administrator tabs for proposals (approve, or reject with a reason, and the reason when nothing was applied), agent runs (start a run, follow it to the end, read its report), items (today's portions, the unavailable flag, adding an item) and the service window. Shared widgets went in a new file, so the Student files were untouched.
+  - #55: buttons for the moves each order's state allows; the queue refreshes after a move, and a refused move says why. The backend fix for E66.
+- **How it was checked:**
+  - Widget tests against a fake server: 23 in #50, 5 more in #55, plus a backend test. Client coverage 97% without the generated code; the web build passes.
+  - E70 was caught by these tests before either PR.
+  - The AI checked that the backend accepts the date format the generated client puts in URL paths (related to E41).
+  - Not tried by hand (E71).
+  - Both PRs were approved by a teammate (Suryansh) with no change requests, then merged.
+- **Outcome:** accepted.
