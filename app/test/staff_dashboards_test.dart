@@ -149,9 +149,15 @@ void main() {
   group('Kitchen', () {
     late _Cafe cafe;
     late List<Map<String, Object?>> slots;
+    var earlier = <Map<String, Object?>>[];
+    Map<String, Object?> queueBody() => {
+      'slots': slots,
+      'earlier_slots': earlier,
+    };
 
     setUp(() {
       cafe = _Cafe('KITCHEN');
+      earlier = [];
       slots = [
         _queueSlot(
           's1',
@@ -171,7 +177,7 @@ void main() {
           totals: [_line('dosa', 'Dosa', 1), _line('thali', 'Thali', 3)],
         ),
       ];
-      cafe.routes[queueUrl] = (_) => Reply(200, {'slots': slots});
+      cafe.routes[queueUrl] = (_) => Reply(200, queueBody());
     });
 
     testWidgets('TC-US33: the queue shows the current and next slot, their '
@@ -215,7 +221,8 @@ void main() {
       expect(find.byKey(const Key('queue-stale')), findsOne);
       expect(find.textContaining('Current slot · 12:15'), findsOne);
 
-      cafe.routes[queueUrl] = (_) => const Reply(200, {'slots': []});
+      cafe.routes[queueUrl] = (_) =>
+          const Reply(200, {'slots': [], 'earlier_slots': []});
       await tester.pump(_poll);
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('queue-empty')), findsOne);
@@ -227,10 +234,140 @@ void main() {
       await cafe.open(tester);
       expect(find.text('Try again'), findsOne);
 
-      cafe.routes[queueUrl] = (_) => Reply(200, {'slots': slots});
+      cafe.routes[queueUrl] = (_) => Reply(200, queueBody());
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Current slot'), findsOne);
+    });
+  });
+
+  group('Kitchen transitions', () {
+    late _Cafe cafe;
+    late Map<String, Object?> queue;
+    const transitionsUrl = '/api/v1/kitchen/orders';
+
+    Map<String, Object?> slotWith(String id, String status, {String? end}) =>
+        _queueSlot(
+          'slot-$id',
+          '2026-10-06T06:30:00Z',
+          end ?? '2026-10-06T06:45:00Z',
+          orders: [_queueOrder(id, status, '2026-10-06T03:40:00Z')],
+        );
+
+    setUp(() {
+      cafe = _Cafe('KITCHEN');
+      queue = {
+        'slots': [slotWith('o-acc', 'ACCEPTED'), slotWith('o-ready', 'READY')],
+        'earlier_slots': [slotWith('o-late', 'READY')],
+      };
+      cafe.routes[queueUrl] = (_) => Reply(200, queue);
+    });
+
+    testWidgets('TC-US34-AC1: each order offers only the moves its state '
+        'allows', (tester) async {
+      queue = {
+        'slots': [
+          slotWith('o-acc', 'ACCEPTED'),
+          slotWith('o-prep', 'PREPARING'),
+          slotWith('o-ready', 'READY'),
+        ],
+        'earlier_slots': [slotWith('o-late', 'READY')],
+      };
+      await cafe.open(tester);
+
+      expect(find.byKey(const Key('START-o-acc')), findsOne);
+      expect(find.byKey(const Key('READY-o-prep')), findsOne);
+      expect(find.byKey(const Key('PICKED_UP-o-ready')), findsOne);
+      // No-show only once the slot is over.
+      expect(find.byKey(const Key('NO_SHOW-o-ready')), findsNothing);
+      expect(find.textContaining('Ended · awaiting pickup'), findsOne);
+      expect(find.byKey(const Key('NO_SHOW-o-late')), findsOne);
+      expect(find.byKey(const Key('PICKED_UP-o-late')), findsOne);
+    });
+
+    testWidgets('starting an order sends the action and refreshes the queue', (
+      tester,
+    ) async {
+      cafe.routes['$transitionsUrl/o-acc/transitions'] = (_) {
+        queue = {
+          'slots': [slotWith('o-acc', 'PREPARING')],
+          'earlier_slots': [],
+        };
+        return const Reply(200, {
+          'id': 'o-acc',
+          'status': 'PREPARING',
+          'slot_id': 'slot-o-acc',
+          'version': 3,
+        });
+      };
+      await cafe.open(tester);
+      final loads = cafe.server.to(queueUrl).length;
+
+      await _tap(tester, 'START-o-acc');
+
+      final sent = cafe.server.to('$transitionsUrl/o-acc/transitions').single;
+      expect(sent.method, 'POST');
+      expect(sent.data, {'action': 'START'});
+      expect(cafe.server.to(queueUrl).length, loads + 1);
+      expect(find.byKey(const Key('READY-o-acc')), findsOne);
+      expect(find.text('Preparing'), findsOne);
+    });
+
+    testWidgets('a no-show before the grace period says from when it is '
+        'allowed', (tester) async {
+      cafe.routes['$transitionsUrl/o-late/transitions'] = (_) =>
+          const Reply(409, {
+            'detail': {
+              'message': 'too early for a no-show',
+              'status': 'READY',
+              'allowed_from': '2026-10-06T07:00:00Z',
+            },
+          });
+      await cafe.open(tester);
+
+      await _tap(tester, 'NO_SHOW-o-late');
+
+      expect(
+        _text(tester, 'order-error-o-late'),
+        'Too early for a no-show: allowed from 12:30.',
+      );
+    });
+
+    testWidgets('a move someone else already made is refused and the queue '
+        'shows the real state', (tester) async {
+      cafe.routes['$transitionsUrl/o-acc/transitions'] = (_) {
+        queue = {
+          'slots': [slotWith('o-acc', 'PREPARING')],
+          'earlier_slots': [],
+        };
+        return const Reply(409, {
+          'detail': {
+            'message': 'cannot START an order that is PREPARING',
+            'status': 'PREPARING',
+          },
+        });
+      };
+      await cafe.open(tester);
+
+      await _tap(tester, 'START-o-acc');
+
+      expect(
+        _text(tester, 'order-error-o-acc'),
+        'Not changed: the order is already PREPARING.',
+      );
+      expect(find.byKey(const Key('READY-o-acc')), findsOne);
+    });
+
+    testWidgets('a move the server cannot be reached for says so', (
+      tester,
+    ) async {
+      cafe.routes['$transitionsUrl/o-ready/transitions'] = (r) =>
+          throw networkFailure(r);
+      await cafe.open(tester);
+
+      await _tap(tester, 'PICKED_UP-o-ready');
+
+      expect(_text(tester, 'order-error-o-ready'), contains('Could not reach'));
     });
   });
 

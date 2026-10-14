@@ -260,6 +260,39 @@ def test_tc_us33_ac1_current_slot_moves_on_when_a_slot_ends(
     assert after_service == []
 
 
+def test_ended_slots_with_open_orders_stay_listed_for_pickup_and_no_show(
+    api: TestClient,
+    engine: Engine,
+    kitchen: dict[str, str],
+    student: User,
+    menu: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A READY order can be marked no-show only after its slot ends (FR-43), so the
+    queue keeps today's ended slots that still have open orders."""
+    slots = menu["slots"]
+    thali = menu["items"]["Thali"]
+    ready = _order(engine, student, slots[0], OrderStatus.READY, _at(9, 0), {thali: 1})
+    _order(engine, student, slots[15], OrderStatus.PICKED_UP, _at(9, 0), {thali: 1})
+    _order(engine, student, slots[30], OrderStatus.ACCEPTED, _at(9, 0), {thali: 2})
+    monkeypatch.setattr(clock, "now", lambda: _at(12, 35))
+
+    body = _queue(api, kitchen)
+
+    assert [slot["slot_id"] for slot in body["slots"]] == [
+        str(slots[30].id),
+        str(slots[45].id),
+    ]
+    # The 12:15 slot ended with nothing open, so only the 12:00 slot is listed.
+    [earlier] = body["earlier_slots"]
+    assert earlier["slot_id"] == str(slots[0].id)
+    assert [order["id"] for order in earlier["orders"]] == [str(ready)]
+    assert earlier["item_totals"] == []
+
+    monkeypatch.setattr(clock, "now", lambda: _at(11, 0))
+    assert _queue(api, kitchen)["earlier_slots"] == []
+
+
 def test_tc_us33_ac2_next_slot_totals_follow_the_approved_prep_priority(
     api: TestClient, engine: Engine, kitchen: dict[str, str], student: User, menu: dict[str, Any]
 ) -> None:
