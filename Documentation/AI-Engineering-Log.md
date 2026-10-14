@@ -55,6 +55,12 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E43 | While checking that the tests catch a broken route guard, the AI reverted an uncommitted file with a version-control command | Tooling slip | The next check found the old file | Rewritten from the same source; analysis, tests and coverage rerun |
 | E44 | Formatting the whole client also reformatted the generated code, which would have failed the up-to-date check in CI | Tooling defect | Reading the commit's file list | The generation script now formats its own output |
 | E45 | Tokens are kept in memory only, so reloading the page logs the user out; the SRS does not say where the client should keep them | Specification gap | Writing the session code | Flagged in the PR; the team accepted keeping tokens in memory only |
+| E46 | The Sprint 2 plan assumed the agent tables, the agent's read views and its restricted database role already existed; no issue owned them, and three issues depended on them | **Planning gap** | Comparing the plan with the code | Built first, as its own PR under CAFIITK-164, with the proposal payload agreed in it |
+| E47 | The check that the scheduled planning run had already happened that day compared a timestamp set by the database clock with the application clock | Defect | Failing acceptance test | The run's start time is now set from the application clock |
+| E48 | The SRS makes disable and replenishment proposals expire when the service window opens, so one drafted during service would be expired from the start | Specification gap | Writing the agent's tools | During service the agent refuses them with the reason; flagged in the PR; team decision on the SRS pending |
+| E49 | Test data written for the agent run prioritised an item that had no orders in the slot, which FR-54 does not allow; it passed only because nothing checked it yet | Test defect | The new output validator rejected it | Test data corrected so the tests check what they were written for |
+| E50 | The LLM client has never called OpenAI, and its default model is an unconfirmed choice | **Verification gap** | No API key on the author's machine | Pending: one call with the team key, and a decision on the model |
+| E51 | The Docker run of the heuristic fallback was abandoned when the image rebuild stalled downloading packages | Verification gap | The build did not finish | Behaviour covered by tests against PostgreSQL; the run before it had exercised the queue-to-worker path in Docker |
 
 ---
 
@@ -248,3 +254,53 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **How it was checked:** 64 client tests in all, with analysis, the coverage gate and the release web build on the author's machine. The author then ran the flow by hand against the local stack: ordering, a declined payment, and a confirmation repeated across an API outage, which reached the server once the API returned and carried the same key as the failed attempts. The PR was approved by a teammate (Shashi) with no change requests, then merged.
 - **What changed:** an earlier login test was corrected, because the dashboard now loads data as soon as it opens.
 - **Outcome:** first half accepted. The story stays open: modify, cancel and order tracking wait for endpoints owned by other members.
+
+### Agent schema and proposal format (CAFIITK-164, first part)
+
+- **Asked for:** the database pieces the Sprint 2 agent and proposal issues all depended on (E46), ahead of the agent run itself.
+- **AI produced:** a migration with the agent tables of SADD Figure 2.6 (runs, tool-call and LLM-call logs, proposals); five read views that give the agent item and slot totals only, with no student identifiers; a `caf_agent` database role that may read those views and insert proposals and logs, and nothing else (NFR-25); a database rule allowing one planning run at a time (FR-50); and the payload format for each proposal type, shared with the proposal-approval and kitchen-queue issues.
+- **How it was checked:** lint, strict type checking and the full suite; the migration compared with the models, downgraded and re-applied. The role's privileges were tested by running statements as `caf_agent` against PostgreSQL. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** nothing after review. The kitchen queue (CAFIITK-158) was then built on the payload format as agreed.
+- **Outcome:** accepted.
+
+### caf-worker (CAFIITK-174)
+
+- **Asked for:** the background process of SADD ADR-07: one codebase run in worker mode, with exactly one worker running jobs at a time.
+- **AI produced:** a scheduler that runs jobs only while it holds a PostgreSQL advisory lock; other workers wait and take over if the leader stops. A leader that loses its lock connection stops and exits so Docker restarts it. Jobs are registered in one list, can also run at start-up, and a failing run does not stop its job. Docker Compose gained the worker service.
+- **How it was checked:** tests against PostgreSQL with two workers, a stopped leader, a killed database session and the real worker process; repeated runs to check for flakiness; and two worker containers in Docker Compose, where stopping the leader made the other take over. The PR was approved by two teammates (Shashi and Suryansh) with no change requests, then merged.
+- **What changed:** nothing after review.
+- **Outcome:** accepted.
+
+### LLM client (CAFIITK-175)
+
+- **Asked for:** the backend-only LLM client of SADD 2.3, with a timeout, a circuit breaker, the daily request cap and a cache. The team chose OpenAI, as named in the proposal.
+- **AI produced:** a client that refuses to call while a database transaction is open (NFR-6), answers a repeated identical request from a per-day cache, stops calling for a while after repeated failures, and counts every call against the daily cap in the database so the cap holds across processes (NFR-13, NFR-42). Every failure becomes one "LLM unavailable" signal for the fallback. The API key is read from the environment and never logged; without it the agent uses only the heuristic. Tests use a scripted stand-in, so CI needs no key.
+- **How it was checked:** tests against PostgreSQL, including 12 concurrent callers against a cap of 5, and tests of the OpenAI adapter over a mocked connection, including that the key never appears in an error. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** nothing after review. It has not yet been run against OpenAI itself (E50).
+- **Outcome:** accepted.
+
+### Planning agent run (CAFIITK-164, US-39)
+
+- **Asked for:** the agent run of SADD SD-6: scheduled before service and on demand, one at a time, with every tool call and LLM request logged and nothing identifying a student sent to the LLM.
+- **AI produced:** a run that reads the five views as `caf_agent`, computes the report's demand summary and stock-out forecast, then lets the LLM use eight whitelisted tools: five read tools and three that draft proposals. Drafted proposals are stored as pending with their expiry. An unknown tool is refused and recorded as a security event (FR-60). The API only queues a run; the worker runs it, so a slow LLM cannot hold up the API (NFR-17). Endpoints list runs and show each run's report, proposals and tool-call log.
+- **Design choices beyond the requirements:** the forecast's numbers are computed by code from the tool data, and the LLM supplies only the judgement: which proposals to draft and why. The read tools take no arguments, so the model cannot widen what it reads. Both were flagged in the PR and approved without comment.
+- **How it was checked:** 34 tests against PostgreSQL with a scripted LLM, including the three acceptance criteria, one of which checks that no student's name, email or ID appears in anything sent to the LLM. In Docker Compose, a run queued through the API was executed by the worker container, and a second request got 409 with the running run's ID. A test found one defect (E47), and a gap in the SRS was handled and flagged (E48). The PR was approved by a teammate (Suryansh) with no change requests, then merged.
+- **What changed:** after other members' PRs merged, the generated client conflicted; it was regenerated from the combined backend instead of being merged by hand.
+- **Outcome:** accepted.
+
+### Planning without the LLM (CAFIITK-168, US-43)
+
+- **Asked for:** a usable briefing when the LLM is down, slow or over its daily cap (FR-59), and reuse of an earlier result when the data has not changed (FR-64).
+- **AI produced:** a rule-based planner, used when the LLM cannot be used or a run exceeds its limits. It drafts the same proposal types from the same forecast: extra portions for an item likely to run out, disabling it if even the maximum would not be enough, and the order of preparation for the next slot. Its proposals go through the same tools as the LLM's, so they are checked and expire in the same way. The run is marked as heuristic, with the reason. A run whose data matches an earlier successful run of the same day reuses that result without an LLM request.
+- **How it was checked:** tests against PostgreSQL for the three acceptance criteria: an unreachable OpenAI endpoint gives a heuristic report in under 5 seconds while the menu still answers in under a second; a reached cap sends no request to the LLM; identical data reuses the earlier run. The Docker run was not repeated (E51). The PR was approved by a teammate (Shashi) with no change requests, then merged.
+- **What changed:** two earlier tests that expected a failed run without an LLM now expect a heuristic run.
+- **Outcome:** accepted.
+
+### Checking the agent's output (CAFIITK-167, US-42)
+
+- **Asked for:** filtering of invalid or invented proposals before an Administrator sees them (FR-58).
+- **AI produced:** a validator that discards a proposal naming an item that does not exist or is not active, prioritising an item with no orders in the slot, or adding more portions than the configured maximum or the 500-portion limit. The reason is logged and sent back to the model. The model gets one retry after bad output; after that the rule-based planner takes over. The rule-based planner's own proposals go through the same validator.
+- **Design choices beyond the requirements:** the log separates malformed output from well-formed output that fails these checks, so a reader can tell the two apart. Flagged in the PR and approved without comment.
+- **How it was checked:** tests against PostgreSQL for the three acceptance criteria (an invented item, invalid output twice, and 10,000 extra portions) and for each validation rule. The validator also caught a defect in earlier test data (E49). The PR was approved by a teammate (Shashi) with no change requests, then merged.
+- **What changed:** the earlier test data was corrected.
+- **Outcome:** accepted.
