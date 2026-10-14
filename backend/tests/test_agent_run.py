@@ -6,11 +6,15 @@ the caf_agent role exactly as in production.
 """
 
 import json
+import threading
+import time as time_module
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
+import httpx
+import openai
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, text
@@ -31,6 +35,7 @@ from app.models.enums import (
 )
 from app.models.identity import User
 from app.models.ordering import Order, OrderLine
+from app.modules.agent import heuristic
 from app.modules.agent.forecast import Risk, Snapshot, build_report, forecast
 from app.modules.agent.llm import (
     DAILY_BUDGET_SUBJECT,
@@ -40,9 +45,11 @@ from app.modules.agent.llm import (
     ResponseCache,
     ToolCall,
 )
+from app.modules.agent.openai_provider import OpenAIProvider
 from app.modules.agent.orchestrator import PlanningOrchestrator, RunLimits
 from app.modules.agent.service import AgentService
 from app.modules.agent.stub import StubProvider, reply
+from app.modules.agent.tools import ToolRegistry
 from app.modules.proposals.payloads import parse_payload
 from app.worker.jobs import all_jobs
 
@@ -466,7 +473,7 @@ def test_during_service_only_prep_priority_can_be_proposed(
 # --- Failures and limits ----------------------------------------------------------
 
 
-def test_without_an_llm_the_run_fails_with_the_reason_and_still_has_the_numbers(
+def test_without_a_key_the_heuristic_plans_and_says_why(
     kitchen: Kitchen, sessions: sessionmaker[Session], engine: Engine
 ) -> None:
     def no_llm(s: Session) -> GuardedLLMClient:
@@ -477,17 +484,17 @@ def test_without_an_llm_the_run_fails_with_the_reason_and_still_has_the_numbers(
     with sessions() as session:
         service = AgentService(session, no_llm)
         run_id = service.request_run(AgentTrigger.ON_DEMAND, None, _at(11, 30)).id
-        assert service.run_next(_at(11, 30)) is AgentRunStatus.FAILED
+        assert service.run_next(_at(11, 30)) is AgentRunStatus.SUCCEEDED
 
     saved = _run(engine, run_id)
-    assert "no LLM API key" in saved["report"]["error"]
+    assert saved["source"] == "HEURISTIC"
+    assert "no LLM API key" in saved["report"]["fallback_reason"]
     assert saved["report"]["forecast"]
-    assert saved["input_hash"]
     [llm_call] = _logged(engine, "agent_llm_calls", run_id)
     assert llm_call["outcome"] == "ERROR"
 
 
-def test_a_run_that_exceeds_its_tool_calls_fails(
+def test_a_run_that_exceeds_its_tool_calls_falls_back_to_the_heuristic(
     kitchen: Kitchen, sessions: sessionmaker[Session], engine: Engine
 ) -> None:
     looping = StubProvider([_tools(_call("get_menu_config")) for _ in range(10)])
@@ -503,8 +510,10 @@ def test_a_run_that_exceeds_its_tool_calls_fails(
         orchestrator = PlanningOrchestrator(session, llm, RunLimits(max_calls=3, timeout_s=30))
         status = orchestrator.execute(run_id, DAY, _at(11, 30))
 
-    assert status is AgentRunStatus.FAILED
-    assert "3 tool calls" in _run(engine, run_id)["report"]["error"]
+    assert status is AgentRunStatus.SUCCEEDED
+    saved = _run(engine, run_id)
+    assert saved["source"] == "HEURISTIC"
+    assert "3 tool calls" in saved["report"]["fallback_reason"]
     assert len(_logged(engine, "agent_tool_calls", run_id)) == 3
 
 
@@ -700,3 +709,233 @@ def test_removed_items_are_left_out_of_the_forecast() -> None:
     snapshot = _snapshot(5, 0, [1])
     gone = Snapshot(**{**snapshot.__dict__, "menu_config": []})
     assert build_report(gone, _at(11, 30))["forecast"] == []
+
+
+# --- US-43: planning without the LLM (FR-59, FR-64, NFR-17) -------------------------
+
+
+def _unreachable_openai() -> OpenAIProvider:
+    def refuse(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    client = openai.OpenAI(
+        api_key="sk-test",
+        base_url="https://llm.unreachable.test/v1",
+        max_retries=0,
+        timeout=1.0,
+        http_client=httpx.Client(transport=httpx.MockTransport(refuse)),
+    )
+    return OpenAIProvider(client, "gpt-test")
+
+
+def _guarded(provider: Any, session: Session, *, daily_cap: int = 50) -> GuardedLLMClient:
+    return GuardedLLMClient(
+        provider,
+        session,
+        daily_cap=daily_cap,
+        breaker=CircuitBreaker(),
+        cache=ResponseCache(),
+        now=lambda: _at(11, 30),
+    )
+
+
+def test_tc_us43_ac1_unreachable_llm_gives_a_heuristic_report_within_5_s(
+    kitchen: Kitchen, sessions: sessionmaker[Session], engine: Engine
+) -> None:
+    with sessions() as session:
+        service = AgentService(session, lambda s: _guarded(_unreachable_openai(), s))
+        run_id = service.request_run(AgentTrigger.ON_DEMAND, None, _at(11, 30)).id
+        started = time_module.monotonic()
+        status = service.run_next(_at(11, 30))
+        elapsed = time_module.monotonic() - started
+
+    assert status is AgentRunStatus.SUCCEEDED
+    assert elapsed < 5
+    saved = _run(engine, run_id)
+    assert saved["source"] == "HEURISTIC"
+    assert saved["report"]["narrative"].startswith("Heuristic briefing")
+    risks = {row["item_name"]: row["risk"] for row in saved["report"]["forecast"]}
+    assert risks["Paneer Thali"] == "high"
+    proposals = {p["type"]: p for p in _proposals(engine, run_id)}
+    # Thali: forecast 20 (yesterday), 4 allocated, 10 available -> 6 short.
+    assert proposals["REPLENISH"]["payload"] == {
+        "lines": [{"item_id": str(kitchen.thali.id), "additional_portions": 6}]
+    }
+    assert proposals["PREP_PRIORITY"]["target_slot_id"] == kitchen.slots[0].id
+    assert {p["source"] for p in proposals.values()} == {"HEURISTIC"}
+
+
+def test_tc_us43_ac1_a_slow_llm_does_not_slow_ordering(
+    kitchen: Kitchen, sessions: sessionmaker[Session], db_client: TestClient
+) -> None:
+    release = threading.Event()
+
+    def slow(request: object) -> LLMResponse:
+        release.wait(timeout=10)
+        return reply("late briefing")
+
+    with sessions() as session:
+        service = AgentService(session, lambda s: _guarded(StubProvider([slow]), s))
+        service.request_run(AgentTrigger.ON_DEMAND, None, _at(11, 30))
+        runner = threading.Thread(target=service.run_next, args=(_at(11, 30),))
+        runner.start()
+        try:
+            started = time_module.monotonic()
+            menu = db_client.get(
+                f"/api/v1/menu?date={DAY.isoformat()}", headers=kitchen.auth(kitchen.student)
+            )
+            elapsed = time_module.monotonic() - started
+        finally:
+            release.set()
+            runner.join(timeout=10)
+
+    assert menu.status_code == 200
+    assert elapsed < 1
+
+
+def test_tc_us43_ac2_daily_cap_reached_uses_the_heuristic(
+    kitchen: Kitchen, sessions: sessionmaker[Session], engine: Engine
+) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO rate_limits (subject, window_start, count) VALUES (:s, :w, 50)"),
+            {"s": DAILY_BUDGET_SUBJECT, "w": datetime.combine(DAY, time.min, tzinfo=IST)},
+        )
+    stub = StubProvider([reply("never used")])
+
+    with sessions() as session:
+        service = AgentService(session, lambda s: _guarded(stub, s, daily_cap=50))
+        run_id = service.request_run(AgentTrigger.ON_DEMAND, None, _at(11, 30)).id
+        assert service.run_next(_at(11, 30)) is AgentRunStatus.SUCCEEDED
+
+    saved = _run(engine, run_id)
+    assert saved["source"] == "HEURISTIC"
+    assert "daily LLM cap" in saved["report"]["fallback_reason"]
+    assert stub.requests == []
+
+
+def test_tc_us43_ac3_identical_tool_data_reuses_the_earlier_result(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    thali = str(kitchen.thali.id)
+    stub = StubProvider(
+        [
+            _tools(
+                _call(
+                    "propose_replenishment_plan",
+                    {"lines": [{"item_id": thali, "additional_portions": 6}], "rationale": "r"},
+                )
+            ),
+            reply("first briefing"),
+        ]
+    )
+    first_id, _, _ = run_with(provider=stub)
+    requests_after_first = len(stub.requests)
+
+    second_id, status, _ = run_with(provider=stub, now=_at(11, 40))
+
+    assert status is AgentRunStatus.SUCCEEDED
+    assert len(stub.requests) == requests_after_first  # no LLM request
+    second = _run(engine, second_id)
+    assert second["report"]["reused_from"] == str(first_id)
+    assert second["report"]["narrative"] == "first briefing"
+    assert second["source"] == "LLM"
+    assert _proposals(engine, second_id) == []  # the first run's proposals stand
+    assert len(_proposals(engine, first_id)) == 1
+
+
+def test_changed_tool_data_is_planned_again(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    first_id, _, _ = run_with(reply("first"))
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE daily_inventory SET total = total + 5 WHERE item_id = :i"),
+            {"i": kitchen.dosa.id},
+        )
+
+    second_id, _, stub = run_with(reply("second"))
+
+    assert len(stub.requests) == 1
+    assert "reused_from" not in _run(engine, second_id)["report"]
+    assert _run(engine, second_id)["input_hash"] != _run(engine, first_id)["input_hash"]
+
+
+# --- Heuristic rules (pure) -------------------------------------------------------------
+
+
+def _heuristic_snapshot(available: int, history: int, pending: dict[str, int]) -> Snapshot:
+    slots = [
+        {"slot_id": str(SLOT_IDS[i]), "starts_at": _at(12, 15 * i).isoformat()} for i in range(4)
+    ]
+    return Snapshot(
+        service_date=DAY.isoformat(),
+        pending_orders=[
+            {
+                "slot_id": str(SLOT_IDS[1]),
+                "starts_at": slots[1]["starts_at"],
+                "item_id": item,
+                "portions": n,
+            }
+            for item, n in pending.items()
+        ],
+        inventory_levels=[
+            {"item_id": str(ITEM_A), "total": available, "allocated": 0, "available": available},
+            {"item_id": str(ITEM_B), "total": 50, "allocated": 0, "available": 50},
+        ],
+        slot_utilisation=slots,
+        historical_demand=[
+            {"service_date": YESTERDAY.isoformat(), "item_id": str(ITEM_A), "portions": history}
+        ],
+        menu_config=[
+            {"item_id": str(ITEM_A), "name": "A"},
+            {"item_id": str(ITEM_B), "name": "B"},
+        ],
+    )
+
+
+ITEM_A = uuid.UUID(int=0xA)
+ITEM_B = uuid.UUID(int=0xB)
+SLOT_IDS = [uuid.UUID(int=0x100 + i) for i in range(4)]
+
+
+def _heuristic(snapshot: Snapshot, now: datetime, repl_max: int = 200) -> heuristic.HeuristicPlan:
+    report = build_report(snapshot, now)
+    return heuristic.plan(snapshot, report, ToolRegistry(snapshot, now), repl_max)
+
+
+def test_heuristic_replenishes_the_shortfall_and_orders_prep_by_pending_portions() -> None:
+    snapshot = _heuristic_snapshot(10, 30, {str(ITEM_B): 2, str(ITEM_A): 7})
+
+    plan = _heuristic(snapshot, _at(11, 30))
+
+    by_type = {p.type: p for p in plan.proposals}
+    assert by_type[ProposalType.REPLENISH].payload == {
+        "lines": [{"item_id": str(ITEM_A), "additional_portions": 20}]
+    }
+    assert by_type[ProposalType.PREP_PRIORITY].payload == {"item_ids": [str(ITEM_A), str(ITEM_B)]}
+    assert "High stock-out risk: A." in plan.narrative
+
+
+def test_heuristic_proposes_disabling_when_the_shortfall_exceeds_p_repl_max() -> None:
+    plan = _heuristic(_heuristic_snapshot(10, 300, {}), _at(11, 30), repl_max=200)
+
+    [proposal] = plan.proposals
+    assert proposal.type is ProposalType.DISABLE
+    assert proposal.payload["item_id"] == str(ITEM_A)
+
+
+def test_heuristic_during_service_only_prioritises_a_slot_not_yet_started() -> None:
+    plan = _heuristic(_heuristic_snapshot(10, 30, {str(ITEM_A): 1}), _at(12, 5))
+
+    [proposal] = plan.proposals
+    assert proposal.type is ProposalType.PREP_PRIORITY
+    # 12:05: the 12:00 slot has started, so the pending 12:15 slot is prioritised.
+    assert proposal.target_slot_id == SLOT_IDS[1]
+
+
+def test_heuristic_with_nothing_at_risk_drafts_nothing() -> None:
+    plan = _heuristic(_heuristic_snapshot(50, 5, {}), _at(11, 30))
+
+    assert plan.proposals == []
+    assert "No item is at high risk." in plan.narrative

@@ -137,6 +137,22 @@ class RunRepository:
             )
         )
 
+    def reusable_run(
+        self, input_hash: str, service_date: date, exclude: uuid.UUID
+    ) -> AgentRun | None:
+        """The latest successful run of this service date that planned from the same data."""
+        return self.session.scalar(
+            select(AgentRun)
+            .where(
+                AgentRun.status == AgentRunStatus.SUCCEEDED,
+                AgentRun.input_hash == input_hash,
+                AgentRun.report["service_date"].astext == service_date.isoformat(),
+                AgentRun.id != exclude,
+            )
+            .order_by(AgentRun.started_at.desc())
+            .limit(1)
+        )
+
     def get(self, run_id: uuid.UUID) -> AgentRun | None:
         return self.session.get(AgentRun, run_id)
 

@@ -6,13 +6,16 @@
    P-AGENT_RUN_TIMEOUT; every LLM request and tool call is logged (FR-62).
 4. Insert the staged proposals as PENDING (caf_agent), then record the run.
 
+If an earlier run of the same service date planned from identical tool data, its
+result is reused without an LLM request (FR-64, SD-6 step 3). If the LLM cannot
+be used (unreachable, too slow, breaker open, daily cap reached) or the run
+exceeds its limits, the heuristic planner drafts the report's proposals instead
+and the run is marked HEURISTIC (FR-59, SD-6 steps 4 and 17-18).
+
 No database transaction is open while the LLM is called (NFR-6): every database
 step is its own short transaction. What the LLM sees is item and slot aggregates
 and the admin-entered menu text, all as JSON data (FR-51, FR-61); nothing
 identifying a Student exists in the agent's views.
-
-When the LLM cannot be used, or the run exceeds its limits, the run currently
-FAILS with the reason; the heuristic fallback (FR-59) comes with CAFIITK-168.
 """
 
 import hashlib
@@ -27,6 +30,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.enums import AgentRunStatus, AgentSource
+from app.modules.agent import heuristic
 from app.modules.agent.forecast import Snapshot, build_report
 from app.modules.agent.llm import GuardedLLMClient, LLMRequest, LLMUnavailableError, Message
 from app.modules.agent.repository import AgentDataRepository, RunRepository
@@ -94,27 +98,39 @@ class PlanningOrchestrator:
         snapshot = take_snapshot(self.data, service_date)
         digest = input_hash(snapshot)
         report = build_report(snapshot, now)
-        try:
-            narrative, staged = self._plan(run_id, snapshot, report, now)
-        except (LLMUnavailableError, AgentLimitError) as exc:
-            log.warning("agent run %s failed: %s", run_id, exc)
-            with self.session.begin():
+        with self.session.begin():
+            repl_max = int(self.runs.get_setting("P-REPL_MAX"))
+            earlier = self.runs.reusable_run(digest, service_date, exclude=run_id)
+            if earlier is not None:
+                # FR-64: same tool data in the same window; its proposals are still the plan.
                 self.runs.finish(
                     run_id,
-                    AgentRunStatus.FAILED,
-                    source=None,
+                    AgentRunStatus.SUCCEEDED,
+                    source=earlier.source,
                     input_hash=digest,
-                    report=report | {"error": str(exc)},
+                    report=(earlier.report or {}) | {"reused_from": str(earlier.id)},
                 )
-            return AgentRunStatus.FAILED
-        self.data.insert_proposals([self._proposal_row(run_id, service_date, p) for p in staged])
+                return AgentRunStatus.SUCCEEDED
+        extra: dict[str, Any] = {}
+        try:
+            narrative, staged = self._plan(run_id, snapshot, report, now)
+            source = AgentSource.LLM
+        except (LLMUnavailableError, AgentLimitError) as exc:
+            log.warning("agent run %s falls back to the heuristic: %s", run_id, exc)
+            fallback = heuristic.plan(snapshot, report, ToolRegistry(snapshot, now), repl_max)
+            narrative, staged = fallback.narrative, fallback.proposals
+            source = AgentSource.HEURISTIC
+            extra = {"fallback_reason": str(exc)}
+        self.data.insert_proposals(
+            [self._proposal_row(run_id, service_date, p, source) for p in staged]
+        )
         with self.session.begin():
             self.runs.finish(
                 run_id,
                 AgentRunStatus.SUCCEEDED,
-                source=AgentSource.LLM,
+                source=source,
                 input_hash=digest,
-                report=report | {"narrative": narrative, "proposals": len(staged)},
+                report=report | {"narrative": narrative, "proposals": len(staged)} | extra,
             )
         return AgentRunStatus.SUCCEEDED
 
@@ -178,7 +194,9 @@ class PlanningOrchestrator:
                 messages.append(Message("tool", result.content, tool_call_id=call.id))
 
     @staticmethod
-    def _proposal_row(run_id: uuid.UUID, service_date: date, p: StagedProposal) -> dict[str, Any]:
+    def _proposal_row(
+        run_id: uuid.UUID, service_date: date, p: StagedProposal, source: AgentSource
+    ) -> dict[str, Any]:
         return {
             "id": uuid.uuid4(),
             "run_id": run_id,
@@ -187,6 +205,6 @@ class PlanningOrchestrator:
             "target_slot_id": p.target_slot_id,
             "payload": p.payload,
             "rationale": p.rationale,
-            "source": AgentSource.LLM.value,
+            "source": source.value,
             "expires_at": p.expires_at,
         }
