@@ -14,6 +14,7 @@ ItemOut _$ItemOutFromJson(Map<String, dynamic> json) => ItemOut(
   pricePaise: (json['price_paise'] as num).toInt(),
   status: ItemStatus.fromJson(json['status'] as String),
   unavailable: json['unavailable'] as bool,
+  unavailableReason: json['unavailable_reason'] as String?,
 );
 
 Map<String, dynamic> _$ItemOutToJson(ItemOut instance) => <String, dynamic>{
@@ -24,4 +25,5 @@ Map<String, dynamic> _$ItemOutToJson(ItemOut instance) => <String, dynamic>{
   'price_paise': instance.pricePaise,
   'status': instance.status,
   'unavailable': instance.unavailable,
+  'unavailable_reason': instance.unavailableReason,
 };

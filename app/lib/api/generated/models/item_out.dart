@@ -19,6 +19,7 @@ class ItemOut {
     required this.pricePaise,
     required this.status,
     required this.unavailable,
+    required this.unavailableReason,
   });
 
   factory ItemOut.fromJson(Map<String, Object?> json) =>
@@ -32,6 +33,8 @@ class ItemOut {
   final int pricePaise;
   final ItemStatus status;
   final bool unavailable;
+  @JsonKey(name: 'unavailable_reason')
+  final String? unavailableReason;
 
   Map<String, Object?> toJson() => _$ItemOutToJson(this);
 }
