@@ -11,6 +11,7 @@ export 'clients/ordering_client.dart';
 export 'clients/pricing_client.dart';
 export 'clients/ops_client.dart';
 // Data classes
+export 'models/flag_request.dart';
 export 'models/http_validation_error.dart';
 export 'models/inventory_out.dart';
 export 'models/inventory_set.dart';
