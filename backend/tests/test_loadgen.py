@@ -142,3 +142,35 @@ def test_menu_open_is_restored_even_if_the_run_fails(rush_db: Engine) -> None:
         raise RuntimeError("boom")
 
     assert _menu_open(rush_db) == before
+
+
+def test_check_counters_reports_a_counter_that_drifted_from_the_orders(
+    live_stack: LiveStack, rush_db: Engine
+) -> None:
+    scenario, _ = _rush(live_stack, rush_db)
+    assert loadgen.check_counters(rush_db) == []
+    with Session(rush_db) as session, session.begin():
+        session.execute(
+            update(DailyInventory)
+            .where(DailyInventory.item_id == scenario.item_id)
+            .values(allocated=DailyInventory.allocated + 1)
+        )
+
+    assert loadgen.check_counters(rush_db) == [f"item {scenario.item_id}: allocated 3, held 2"]
+
+
+def test_script_runs_a_short_mixed_workload(
+    live_stack: LiveStack,
+    rush_db: Engine,
+    database_url: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    arguments = ["--database-url", database_url, "--mixed", "3"]
+    for api_url in live_stack.api_urls:
+        arguments += ["--base-url", api_url]
+
+    assert loadgen.main(arguments) == 0
+
+    [line] = capsys.readouterr().out.splitlines()
+    assert line.startswith("mixed 3s: ")
+    assert line.endswith(" OK")
