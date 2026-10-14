@@ -176,7 +176,11 @@ class CheckoutController extends Notifier<Checkout> {
         );
       }
       if (detail.containsKey('item_ids') || detail.containsKey('slot_id')) {
-        final message = _unavailableMessage(detail);
+        final message = unavailableMessage(
+          ref,
+          detail,
+          'Nothing was reserved or charged.',
+        );
         _refreshAvailability();
         return Checkout(error: message);
       }
@@ -193,28 +197,33 @@ class CheckoutController extends Notifier<Checkout> {
       error: describeApiError(error),
     );
   }
+}
 
-  /// NFR-32: say exactly which item(s) or slot could not be had.
-  String _unavailableMessage(Map<dynamic, dynamic> detail) {
-    final menu = ref.read(menuProvider).value;
-    final slots = ref.read(slotsProvider).value;
-    final itemIds = detail['item_ids'];
-    final names = [
-      if (itemIds is List)
-        for (final id in itemIds)
-          menu?.items.where((item) => item.id == id).firstOrNull?.name ??
-              'an item',
-    ];
-    final slotId = detail['slot_id'];
-    final slot = slots?.slots.where((slot) => slot.id == slotId).firstOrNull;
-    final parts = [
-      if (names.isNotEmpty) 'No longer available: ${names.join(', ')}.',
-      if (slotId != null)
-        slot == null
-            ? 'The pickup slot is no longer available.'
-            : 'The ${formatSlot(slot.startsAt, slot.endsAt)} slot is no '
-                  'longer available.',
-    ];
-    return '${parts.join(' ')} Nothing was reserved or charged.';
-  }
+/// NFR-32: say exactly which item(s) or slot could not be had, then
+/// [outcome] (what happened to the Student's money and order).
+String unavailableMessage(
+  Ref ref,
+  Map<dynamic, dynamic> detail,
+  String outcome,
+) {
+  final menu = ref.read(menuProvider).value;
+  final slots = ref.read(slotsProvider).value;
+  final itemIds = detail['item_ids'];
+  final names = [
+    if (itemIds is List)
+      for (final id in itemIds)
+        menu?.items.where((item) => item.id == id).firstOrNull?.name ??
+            'an item',
+  ];
+  final slotId = detail['slot_id'];
+  final slot = slots?.slots.where((slot) => slot.id == slotId).firstOrNull;
+  final parts = [
+    if (names.isNotEmpty) 'No longer available: ${names.join(', ')}.',
+    if (slotId != null)
+      slot == null
+          ? 'The pickup slot is no longer available.'
+          : 'The ${formatSlot(slot.startsAt, slot.endsAt)} slot is no '
+                'longer available.',
+  ];
+  return '${parts.join(' ')} $outcome';
 }
