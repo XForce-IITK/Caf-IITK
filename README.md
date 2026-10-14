@@ -118,8 +118,10 @@ a new idempotency key is made for each priced quote and reused if that
 confirmation is repeated. `order_tracking.dart` shows a placed order's status
 and history, refreshed every P-POLL (10 s) while the order is on screen and not
 finished. `cancel_order.dart` lets the Student cancel an accepted or
-preparing order after a confirmation that says what is refunded. Modify is
-added once its endpoint exists.
+preparing order after a confirmation that says what is refunded, and
+`modify_order.dart` lets the Student change the items or slot of an accepted
+order: the draft starts from what the order holds, is priced through
+`POST /orders/{id}/quote`, and is applied with `PATCH /orders/{id}`.
 
 ### API client
 

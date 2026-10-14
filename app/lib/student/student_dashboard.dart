@@ -6,6 +6,7 @@ import '../api/errors.dart';
 import '../dashboards/dashboard_scaffold.dart';
 import 'cancel_order.dart';
 import 'format.dart';
+import 'modify_order.dart';
 import 'order_tracking.dart';
 import 'student_state.dart';
 
@@ -371,25 +372,35 @@ class _OrderPlaced extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The tracked order is the latest one, after any change (FR-35).
+    final latest = ref.watch(orderTrackingProvider(order.id)).value?.order;
+    final slotId = latest?.slotId ?? order.slotId;
     final slot = ref
         .watch(slotsProvider)
         .value
         ?.slots
-        .where((slot) => slot.id == order.slotId)
+        .where((slot) => slot.id == slotId)
         .firstOrNull;
+    final editing = ref.watch(
+      modifyOrderProvider(order.id).select((m) => m.editing),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const _Heading('Order confirmed'),
-        Text('You paid ${formatPaise(order.paidPaise)}.'),
+        Text('You paid ${formatPaise(latest?.paidPaise ?? order.paidPaise)}.'),
         if (slot != null)
           Text('Pick it up between ${formatSlot(slot.startsAt, slot.endsAt)}.'),
         const SizedBox(height: 8),
         OrderStatusPanel(order.id),
         const SizedBox(height: 8),
-        CancelOrderSection(order.id),
+        ModifyOrderSection(order.id),
         const SizedBox(height: 8),
-        _QuoteBreakdown(order.price, showSlot: false),
+        if (!editing) ...[
+          CancelOrderSection(order.id),
+          const SizedBox(height: 8),
+        ],
+        _QuoteBreakdown(latest?.price ?? order.price, showSlot: false),
         const SizedBox(height: 16),
         OutlinedButton(
           key: const Key('place-another'),
