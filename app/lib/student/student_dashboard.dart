@@ -5,6 +5,7 @@ import '../api/api.dart';
 import '../api/errors.dart';
 import '../dashboards/dashboard_scaffold.dart';
 import 'format.dart';
+import 'order_tracking.dart';
 import 'student_state.dart';
 
 /// The Student's one screen: pick items and a pickup slot, see the exact
@@ -382,6 +383,8 @@ class _OrderPlaced extends ConsumerWidget {
         Text('You paid ${formatPaise(order.paidPaise)}.'),
         if (slot != null)
           Text('Pick it up between ${formatSlot(slot.startsAt, slot.endsAt)}.'),
+        const SizedBox(height: 8),
+        OrderStatusPanel(order.id),
         const SizedBox(height: 8),
         _QuoteBreakdown(order.price, showSlot: false),
         const SizedBox(height: 16),

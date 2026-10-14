@@ -106,8 +106,9 @@ the client's origin (NFR-27).
 with seats left, the full price breakdown before confirming (NFR-32), and
 placing the order. `student_state.dart` holds the cart and the checkout steps;
 a new idempotency key is made for each priced quote and reused if that
-confirmation is repeated. Modify, cancel and order tracking are added once
-their endpoints exist.
+confirmation is repeated. `order_tracking.dart` shows a placed order's status
+and history, refreshed every P-POLL (10 s) while the order is on screen and not
+finished. Modify and cancel are added once their endpoints exist.
 
 ### API client
 
