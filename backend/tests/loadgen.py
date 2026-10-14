@@ -267,6 +267,14 @@ def run_rush(
 HANDLED = frozenset({200, 201, 402, 409, 422})
 
 
+def _fresh_connections(clients: int) -> httpx.Limits:
+    """A new connection per request. uvicorn closes a connection idle for 5 s, and a
+    pooled one reused at that moment fails with ReadError before reaching the app,
+    which these long, uneven workloads hit now and then. A crashed server still fails
+    a fresh connection, so nothing the tests check is hidden."""
+    return httpx.Limits(max_connections=clients, max_keepalive_connections=0)
+
+
 def _auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Idempotency-Key": uuid.uuid4().hex}
 
@@ -358,7 +366,8 @@ def race_modify_and_cancel(base_urls: Sequence[str], engine: Engine, *, orders: 
 async def _race(base_urls: Sequence[str], engine: Engine, scenario: Scenario) -> RaceReport:
     first, second = base_urls[0], base_urls[-1]
     start = [1 + number % 2 for number in range(len(scenario.tokens))]
-    async with httpx.AsyncClient(timeout=120) as client:
+    limits = _fresh_connections(2 * len(scenario.tokens))
+    async with httpx.AsyncClient(timeout=120, limits=limits) as client:
         placed = await asyncio.gather(
             *(
                 _place(client, first, token, _cart(scenario.slot_id, {scenario.item_id: qty}))
@@ -583,8 +592,7 @@ async def _mixed(
                 # A stale version or state: reload this Student's orders and carry on.
                 mine = await _reload(client, rng.choice(base_urls), token, mine)
 
-    limits = httpx.Limits(max_connections=len(tokens))
-    async with httpx.AsyncClient(timeout=120, limits=limits) as client:
+    async with httpx.AsyncClient(timeout=120, limits=_fresh_connections(len(tokens))) as client:
         await asyncio.gather(*(student(client, token) for token in tokens))
     return report
 
