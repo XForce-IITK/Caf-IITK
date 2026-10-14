@@ -10,6 +10,7 @@ from app.modules.audit.router import router as audit_router
 from app.modules.catalogue.router import router as catalogue_router
 from app.modules.identity.router import router as identity_router
 from app.modules.inventory.router import router as inventory_router
+from app.modules.kitchen.router import router as kitchen_router
 from app.modules.ordering.router import router as ordering_router
 from app.modules.payments.router import router as payments_router
 from app.modules.pricing.router import router as pricing_router
@@ -23,6 +24,7 @@ for module_router in (
     slots_router,
     pricing_router,
     ordering_router,
+    kitchen_router,
     payments_router,
     audit_router,
 ):

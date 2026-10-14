@@ -5,9 +5,9 @@ Requirements and design: `Documentation/` (SRS v2.0 and SADD).
 
 | Path | What |
 |---|---|
-| `backend/` | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 16. One codebase for `caf-api` and `mockpay` (and later `caf-worker`). |
+| `backend/` | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 16. One codebase for `caf-api`, `caf-worker` and `mockpay`. |
 | `app/` | Flutter Web client (Riverpod, GoRouter, Dio). |
-| `docker-compose.yml` | Local stack: PostgreSQL 16, migrations, `caf-api` on :8000, `mockpay` on :8001. |
+| `docker-compose.yml` | Local stack: PostgreSQL 16, migrations, `caf-api` on :8000, `caf-worker`, `mockpay` on :8001. |
 
 ## Prerequisites
 
@@ -54,6 +54,15 @@ The full core schema (SADD Figure 2.5) is already in migration `0001`. If a
 change needs a new column or table, add a new migration on top of the latest
 one (`alembic revision --autogenerate -m "..."`) and rebase on `develop` before
 merging so the migration history stays linear.
+
+### Scheduled jobs (caf-worker)
+
+Time-based work (hold sweeper, auto-prep, proposal expiry, scheduled agent runs)
+runs in `caf-worker` (`python -m app.worker`), never in the API. Only the worker
+holding a PostgreSQL advisory lock runs jobs, so starting a second worker is
+safe: it waits and takes over if the leader dies (SADD ADR-07). To add a job,
+append a `Job` to `JOBS` in `app/worker/jobs.py`; it opens its own session and
+must be idempotent.
 
 ### Payments
 

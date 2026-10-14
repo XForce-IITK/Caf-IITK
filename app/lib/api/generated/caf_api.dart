@@ -8,6 +8,7 @@ import 'clients/inventory_client.dart';
 import 'clients/catalogue_client.dart';
 import 'clients/slots_client.dart';
 import 'clients/identity_client.dart';
+import 'clients/kitchen_client.dart';
 import 'clients/ordering_client.dart';
 import 'clients/pricing_client.dart';
 import 'clients/ops_client.dart';
@@ -25,6 +26,7 @@ class CafApi {
   CatalogueClient? _catalogue;
   SlotsClient? _slots;
   IdentityClient? _identity;
+  KitchenClient? _kitchen;
   OrderingClient? _ordering;
   PricingClient? _pricing;
   OpsClient? _ops;
@@ -39,6 +41,9 @@ class CafApi {
 
   IdentityClient get identity =>
       _identity ??= IdentityClient(_dio, baseUrl: _baseUrl);
+
+  KitchenClient get kitchen =>
+      _kitchen ??= KitchenClient(_dio, baseUrl: _baseUrl);
 
   OrderingClient get ordering =>
       _ordering ??= OrderingClient(_dio, baseUrl: _baseUrl);
