@@ -837,6 +837,124 @@
         "title": "PlaceOrderRequest",
         "type": "object"
       },
+      "ProposalConflictOut": {
+        "description": "409: the proposal was not applied; `proposal.status` says why.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/ProposalDetailOut"
+          }
+        },
+        "required": [
+          "message",
+          "proposal"
+        ],
+        "title": "ProposalConflictOut",
+        "type": "object"
+      },
+      "ProposalDetailOut": {
+        "description": "A proposal with its run (whose report holds the related forecast) and its decision.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decision_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Reason"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AgentSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProposalStatus"
+          },
+          "target_date": {
+            "format": "date",
+            "title": "Target Date",
+            "type": "string"
+          },
+          "target_slot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Slot Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ProposalType"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "target_date",
+          "target_slot_id",
+          "payload",
+          "rationale",
+          "source",
+          "status",
+          "expires_at",
+          "run_id",
+          "created_at",
+          "decided_at",
+          "decision_reason"
+        ],
+        "title": "ProposalDetailOut",
+        "type": "object"
+      },
       "ProposalOut": {
         "properties": {
           "expires_at": {
@@ -1187,6 +1305,21 @@
           "password"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RejectRequest": {
+        "properties": {
+          "reason": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "RejectRequest",
         "type": "object"
       },
       "Role": {
@@ -1908,6 +2041,193 @@
         "summary": "Onboard Item",
         "tags": [
           "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/proposals": {
+      "get": {
+        "description": "UC-25 step 1: proposals, newest first; PENDING only unless another status is asked for.\n\nProposals whose target start has passed, or that a newer one superseded, are\nexpired first (FR-56). Each names its run, whose report holds the forecast.",
+        "operationId": "list_proposals",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ProposalStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "PENDING",
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProposalDetailOut"
+                  },
+                  "title": "Response List Proposals",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Proposals",
+        "tags": [
+          "proposals"
+        ]
+      }
+    },
+    "/api/v1/admin/proposals/{proposal_id}/approve": {
+      "post": {
+        "description": "FR-56, FR-57: re-validate, then apply the change, all in one transaction.\n\nItem-disable flags the item until the end of the target date (FR-53), prep\npriority orders the slot's kitchen totals (FR-54) and replenishment adds the\nportions (FR-55), under the Administrator's identity with an audit entry that\nlinks the proposal.",
+        "operationId": "approve_proposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such proposal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalConflictOut"
+                }
+              }
+            },
+            "description": "Not applied: already decided, EXPIRED (target start passed or superseded), or INVALIDATED by re-validation; `detail.proposal` has its status and reason"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Proposal",
+        "tags": [
+          "proposals"
+        ]
+      }
+    },
+    "/api/v1/admin/proposals/{proposal_id}/reject": {
+      "post": {
+        "description": "FR-56: REJECTED with the Administrator's reason; nothing is applied.",
+        "operationId": "reject_proposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such proposal"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProposalConflictOut"
+                }
+              }
+            },
+            "description": "Already decided, or EXPIRED; `detail.proposal` has its status"
+          },
+          "422": {
+            "description": "A reason is required"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Proposal",
+        "tags": [
+          "proposals"
         ]
       }
     },

@@ -29,7 +29,7 @@ class ItemNotActiveError(Exception):
     """Only an ACTIVE item can be flagged or unflagged (FR-11)."""
 
 
-def _flag_state(item: MenuItem) -> dict[str, object]:
+def flag_state(item: MenuItem) -> dict[str, object]:
     return {
         "unavailable": item.unavailable,
         "reason": item.unavailable_reason,
@@ -83,7 +83,7 @@ class CatalogueService:
         """
         with self.session.begin():
             item = self._lock_active(item_id)
-            before = _flag_state(item)
+            before = flag_state(item)
             item.unavailable = True
             item.unavailable_reason = reason
             item.unavailable_source = STAFF_FLAG_SOURCE
@@ -97,7 +97,7 @@ class CatalogueService:
             item = self._lock_active(item_id)
             if not item.unavailable:
                 return item
-            before = _flag_state(item)
+            before = flag_state(item)
             item.unavailable = False
             item.unavailable_reason = None
             item.unavailable_source = None
@@ -124,7 +124,7 @@ class CatalogueService:
             actor_id=str(staff.id),
             actor_role=staff.role.value,
             before=before,
-            after=_flag_state(item),
+            after=flag_state(item),
         )
 
     def browse_menu(self, service_date: date, now: datetime) -> MenuOut:
