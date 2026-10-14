@@ -186,6 +186,23 @@
         "title": "ItemStatus",
         "type": "string"
       },
+      "KitchenQueueOut": {
+        "description": "FR-42: the current slot, then the next one; fewer near the end of service.",
+        "properties": {
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotQueueOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "slots"
+        ],
+        "title": "KitchenQueueOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -454,6 +471,62 @@
           "quoted_payable_paise"
         ],
         "title": "PlaceOrderRequest",
+        "type": "object"
+      },
+      "QueueLineOut": {
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "qty"
+        ],
+        "title": "QueueLineOut",
+        "type": "object"
+      },
+      "QueueOrderOut": {
+        "properties": {
+          "confirmed_at": {
+            "format": "date-time",
+            "title": "Confirmed At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QueueLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "confirmed_at",
+          "lines"
+        ],
+        "title": "QueueOrderOut",
         "type": "object"
       },
       "QuoteLineIn": {
@@ -852,6 +925,65 @@
         "title": "SlotOut",
         "type": "object"
       },
+      "SlotQueueOut": {
+        "properties": {
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "item_totals": {
+            "items": {
+              "$ref": "#/components/schemas/QueueLineOut"
+            },
+            "title": "Item Totals",
+            "type": "array"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/QueueOrderOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "proposal_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposal Id"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          },
+          "totals_order": {
+            "$ref": "#/components/schemas/TotalsOrder"
+          }
+        },
+        "required": [
+          "slot_id",
+          "starts_at",
+          "ends_at",
+          "orders",
+          "item_totals",
+          "totals_order",
+          "proposal_id"
+        ],
+        "title": "SlotQueueOut",
+        "type": "object"
+      },
       "TokenPair": {
         "properties": {
           "access_token": {
@@ -883,6 +1015,15 @@
         ],
         "title": "TokenPair",
         "type": "object"
+      },
+      "TotalsOrder": {
+        "description": "How a slot's item totals are ordered (FR-42).",
+        "enum": [
+          "PREP_PRIORITY",
+          "COUNT"
+        ],
+        "title": "TotalsOrder",
+        "type": "string"
       },
       "TransitionOut": {
         "properties": {
@@ -1515,6 +1656,36 @@
         "summary": "Flag Item",
         "tags": [
           "catalogue"
+        ]
+      }
+    },
+    "/api/v1/kitchen/queue": {
+      "get": {
+        "description": "FR-42: ACCEPTED, PREPARING and READY orders of the current and next slot.\n\nOrders are sorted by slot start, then confirmation time. Each slot's item\ntotals follow its approved prep-priority proposal (FR-54) if there is one,\notherwise descending count. The kitchen screen polls this every P-POLL.",
+        "operationId": "get_kitchen_queue",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenQueueOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Kitchen Staff and the Administrator see the queue"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Kitchen Queue",
+        "tags": [
+          "kitchen"
         ]
       }
     },
