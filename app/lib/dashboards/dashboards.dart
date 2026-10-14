@@ -2,19 +2,6 @@ import 'package:flutter/material.dart';
 
 import 'dashboard_scaffold.dart';
 
-/// The Student flow (menu, slots, quote, orders) is built under CAFIITK-178.
-class StudentDashboard extends StatelessWidget {
-  const StudentDashboard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const DashboardScaffold(
-      title: 'Student',
-      body: Center(child: Text('Pre-order your meal and pickup slot.')),
-    );
-  }
-}
-
 /// The preparation queue is built under CAFIITK-179.
 class KitchenDashboard extends StatelessWidget {
   const KitchenDashboard({super.key});

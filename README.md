@@ -100,6 +100,15 @@ the client's origin (NFR-27).
   (NFR-18).
 - Show failures with `describeApiError(error)` from `lib/api/errors.dart`.
 
+### Student flow
+
+`lib/student/` is the Student dashboard: menu with portions left, slot picker
+with seats left, the full price breakdown before confirming (NFR-32), and
+placing the order. `student_state.dart` holds the cart and the checkout steps;
+a new idempotency key is made for each priced quote and reused if that
+confirmation is repeated. Modify, cancel and order tracking are added once
+their endpoints exist.
+
 ### API client
 
 `app/lib/api/generated/` is generated from caf-api's OpenAPI schema
