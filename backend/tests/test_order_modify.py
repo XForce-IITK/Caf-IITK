@@ -667,3 +667,72 @@ def test_a_key_reused_for_a_different_modification_is_unprocessable(
     response = _modify(api, student, order, _cart(menu, thali=2), 2 * THALI, key="k")
 
     assert response.status_code == 422
+
+
+def test_charged_moves_in_opposite_directions_take_the_slots_in_one_order(
+    db_client: TestClient, engine: Engine, menu: dict[str, Any], now: Clock, monkeypatch: Any
+) -> None:
+    """NFR-4: two price-raising modifies swap slots at the same moment. Updating
+    orders.slot_id takes a key-share lock on the new slot through its foreign key, so
+    settling must hold both slots in ascending id order or the two deadlock."""
+    import threading
+
+    from app.modules.ordering import retry
+
+    deadlocks: list[str] = []
+    real = retry.is_transient
+
+    def recording(exc: Any) -> bool:
+        if getattr(exc.orig, "sqlstate", None) == "40P01":
+            deadlocks.append(str(exc.orig))
+        return real(exc)
+
+    monkeypatch.setattr(retry, "is_transient", recording)
+    rounds = 5
+    barrier = threading.Barrier(2, timeout=30)
+
+    class SettleTogether(FakePaymentGateway):
+        """Holds each charge for a difference until its partner arrives."""
+
+        def authorise(self, reference: str, amount_paise: int) -> Any:
+            if amount_paise == TEA:
+                barrier.wait()
+            return super().authorise(reference, amount_paise)
+
+    _use_gateway(db_client, SettleTogether())
+    # Each round takes four Teas; the fixture stocks ten.
+    with Session(engine) as session, session.begin():
+        session.get_one(DailyInventory, (menu["tea"].id, DAY)).total = 100
+    for _ in range(rounds):
+        early_student, late_student = _student(engine), _student(engine)
+        early = _place(db_client, early_student, menu, THALI + TEA)
+        late_cart = _cart(menu, "late", thali=1, tea=1) | {"quoted_payable_paise": THALI + TEA}
+        late = db_client.post(
+            "/api/v1/orders", json=late_cart, headers=_headers(late_student)
+        ).json()
+        # Each adds a Tea (+Rs 15) and swaps to the other slot.
+        moves = [
+            (early_student, early, _cart(menu, "late", thali=1, tea=2)),
+            (late_student, late, _cart(menu, "early", thali=1, tea=2)),
+        ]
+        results: list[int] = []
+        threads = [
+            threading.Thread(
+                target=lambda s=s, o=o, c=c, out=results: out.append(
+                    _modify(db_client, s, o, c, THALI + 2 * TEA).status_code
+                )
+            )
+            for s, o, c in moves
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=60)
+        assert results == [200, 200]
+
+    assert deadlocks == []
+    assert _snapshot(engine, early["id"])["booked"] == {
+        menu["early"].id: rounds,
+        menu["late"].id: rounds,
+        menu["tomorrow"].id: 0,
+    }
