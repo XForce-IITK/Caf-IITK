@@ -117,7 +117,9 @@ placing the order. `student_state.dart` holds the cart and the checkout steps;
 a new idempotency key is made for each priced quote and reused if that
 confirmation is repeated. `order_tracking.dart` shows a placed order's status
 and history, refreshed every P-POLL (10 s) while the order is on screen and not
-finished. Modify and cancel are added once their endpoints exist.
+finished. `cancel_order.dart` lets the Student cancel an accepted or
+preparing order after a confirmation that says what is refunded. Modify is
+added once its endpoint exists.
 
 ### API client
 
