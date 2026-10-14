@@ -73,6 +73,8 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E61 | While deliberately breaking code to check that tests fail, the AI reverted a change with `git checkout`, which also discarded an uncommitted change in the same file | Process error | Caught by `git diff` straight after | Change re-applied and verified; later checks restore from backup copies, never from git |
 | E62 | Settling a price-raising modify that moves the order to another slot locked the slots out of the canonical order (through the foreign-key check on `orders.slot_id`), so opposite moves could deadlock. Merged in #44 | **Concurrency defect** | The US-30 AC4 mixed workload reported 1–2 deadlocks per run; the PostgreSQL log showed the cycle | Both slots locked in ascending id order; a regression test that deadlocked on every run before the fix; 0 deadlocks after (#54) |
 | E63 | An intermittent failure of the US-30 AC1 rush test ("server closed the connection") was first put down to machine load before there was evidence | Unverified attribution | The author asked what caused it and whether it was safe | Investigated with container and Docker logs: no crash, out-of-memory or restart found. Cause still unknown; reported as such in #39 |
+| E64 | The job that starts preparation was registered in an outdated version of the worker's job list, written before a teammate added another job; it would have left auto-prep unscheduled | Stale-code slip | Failing test | Registered in the current list beside the teammate's job |
+| E65 | Local failures of the US-30 AC1 and AC4 rush tests were put down to machine load in a PR without evidence, repeating E63 | Unverified attribution | Reading E62 and E63 in this log | Investigated: a deadlock fix (E62, #54) was not yet merged, and the machine had run out of local ports (about 16,500 closed connections against 16,384 ports). PR corrected; CI, which runs both tests, passed |
 
 ---
 
@@ -429,3 +431,11 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** the cause, from the PostgreSQL log (E62). It wrote a test that reproduced the deadlock on every run *before* changing the code, then made the fix: settling locks both slots in ascending id order.
 - **How it was checked:** the regression test, 3 passes of 3 after the fix. The AC4 workload reported 0 deadlocks in 2 runs of 2, against 1–2 per run before. Full suite run. The PR was approved by a teammate (Suryansh) with no change requests.
 - **Outcome:** pending merge.
+
+### Preparation starts automatically (CAFIITK-160, US-35)
+
+- **Asked for:** at slot start minus P-AUTO_PREP, every order still ACCEPTED in that slot moves to PREPARING, with SYSTEM as the actor (FR-44). Reassigned to the author when the sprint was revised, and started once the kitchen transitions (CAFIITK-159) were merged.
+- **AI produced:** a caf-worker job, every 30 seconds, that uses the kitchen's own Start transition with no user: each order is locked and its status re-checked, then the transition, an audit entry with actor SYSTEM and the version bump are recorded by the shared order code, so a Student acting on an older view is refused as after the kitchen's Start. One short transaction per order. The job takes no payments; a payment call on this path fails.
+- **How it was checked:** 8 tests against PostgreSQL, including the acceptance criterion (nothing at 12:19 for a 12:30 slot, PREPARING with actor SYSTEM at 12:20), only ACCEPTED orders moving, repeat runs, a late run, the version bump, an order cancelled meanwhile, and the job run end to end. A test caught one slip while drafting (E64). CI passed, including the full suite. The PR was approved by a teammate (Suryansh) with no change requests.
+- **What changed:** the PR's explanation of two local rush-test failures was corrected (E65).
+- **Outcome:** accepted.
