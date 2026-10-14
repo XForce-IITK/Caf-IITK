@@ -1,5 +1,5 @@
-"""US-29 (FR-40) acceptance tests TC-US29-AC1..AC2, and US-05 AC1 (FR-7), through
-GET /api/v1/orders/{id}.
+"""US-29 (FR-40) acceptance tests TC-US29-AC1..AC2 through GET /api/v1/orders/{id},
+and US-05 (FR-7) TC-US05-AC1..AC2: a Student's orders are private.
 
 The kitchen's transitions (CAFIITK-159) are not built yet, so `_kitchen_moves`
 applies them the way the state machine allows, writing the same rows the kitchen
@@ -24,7 +24,7 @@ from app.models.capacity import DailyInventory, ServiceDay, Slot
 from app.models.catalogue import MenuItem
 from app.models.enums import ItemCategory, OrderStatus, Role
 from app.models.identity import User
-from app.models.ordering import Order, OrderTransition
+from app.models.ordering import Order, OrderLine, OrderTransition
 from app.models.platform import AuditLog
 from app.modules.ordering.state_machine import transition
 from app.modules.payments.fake import FakePaymentGateway
@@ -232,6 +232,54 @@ def test_tc_us05_ac1_another_students_order_is_404_and_logged(
     assert event.actor_id == str(other.id)
     assert event.actor_role == "STUDENT"
     assert event.entity_type == "security"
+
+
+def _state(engine: Engine, order_id: str) -> tuple[Any, ...]:
+    """Everything a modify or cancel would change."""
+    with Session(engine) as session:
+        order = session.get(Order, uuid.UUID(order_id))
+        assert order is not None
+        lines = session.scalars(
+            select(OrderLine.item_id, OrderLine.qty).where(OrderLine.order_id == order.id)
+        ).all()
+        stock = session.scalars(select(DailyInventory.allocated)).all()
+        booked = session.scalars(select(Slot.booked)).all()
+        return order.status, order.version, order.slot_id, sorted(lines), stock, booked
+
+
+def test_tc_us05_ac2_another_student_cannot_modify_or_cancel(
+    api: TestClient, engine: Engine, menu: dict[str, Any]
+) -> None:
+    owner, other = _user(engine), _user(engine)
+    order = _place(api, menu, owner)
+    before = _state(engine, order["id"])
+    headers = _auth(other) | {"Idempotency-Key": uuid.uuid4().hex}
+
+    modify = api.patch(
+        f"{ORDERS}/{order['id']}",
+        json={
+            "slot_id": str(menu["slot"].id),
+            "lines": [{"item_id": str(menu["thali"].id), "qty": 2}],
+            "version": order["version"],
+            "quoted_payable_paise": 2 * THALI,
+        },
+        headers=headers,
+    )
+    cancel = api.post(
+        f"{ORDERS}/{order['id']}/cancel",
+        json={"version": order["version"]},
+        headers=_auth(other) | {"Idempotency-Key": uuid.uuid4().hex},
+    )
+
+    # Answered as if the order did not exist, and nothing about it changed.
+    assert (modify.status_code, modify.json()) == (404, {"detail": "Order not found"})
+    assert (cancel.status_code, cancel.json()) == (404, {"detail": "Order not found"})
+    assert _state(engine, order["id"]) == before
+    events = _security_events(engine, order["id"])
+    assert [(event.actor_id, (event.after or {}).get("operation")) for event in events] == [
+        (str(other.id), "modify"),
+        (str(other.id), "cancel"),
+    ]
 
 
 def test_an_order_that_does_not_exist_is_404_the_same_way(
