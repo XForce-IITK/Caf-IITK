@@ -5,6 +5,8 @@
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
+import '../models/cancel_order_request.dart';
+import '../models/cancelled_order_out.dart';
 import '../models/order_detail_out.dart';
 import '../models/order_out.dart';
 import '../models/place_order_request.dart';
@@ -35,4 +37,18 @@ abstract class OrderingClient {
   /// Student's order answers 404 and is logged as a security event (FR-7).
   @GET('/api/v1/orders/{order_id}')
   Future<OrderDetailOut> getOrder({@Path('order_id') required String orderId});
+
+  /// Cancel Order.
+  ///
+  /// FR-37, FR-39: cancel from ACCEPTED (100 % refund, seat and portions restored) or.
+  /// PREPARING (P-LATE_REFUND_PCT refund, seat restored) before slot start - P-CUTOFF.
+  ///
+  /// `version` is the order version the Student confirmed. A repeat with the same key.
+  /// returns the same result; there is never a second refund.
+  @POST('/api/v1/orders/{order_id}/cancel')
+  Future<CancelledOrderOut> cancelOrder({
+    @Path('order_id') required String orderId,
+    @Header('Idempotency-Key') required String idempotencyKey,
+    @Body() required CancelOrderRequest body,
+  });
 }
