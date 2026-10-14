@@ -44,7 +44,8 @@ class MenuItem(Base):
     )
     unavailable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     unavailable_reason: Mapped[str | None] = mapped_column(Text)
-    unavailable_source: Mapped[str | None] = mapped_column(String(20))
+    # "STAFF", or the ID of the approved item-disable proposal that set it (FR-53).
+    unavailable_source: Mapped[str | None] = mapped_column(String(64))
     unavailable_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[CreatedAt]
     updated_at: Mapped[UpdatedAt]

@@ -15,6 +15,7 @@ from app.modules.kitchen.router import router as kitchen_router
 from app.modules.ordering.router import router as ordering_router
 from app.modules.payments.router import router as payments_router
 from app.modules.pricing.router import router as pricing_router
+from app.modules.proposals.router import router as proposals_router
 from app.modules.slots.router import router as slots_router
 
 api_router = APIRouter(prefix="/api/v1")
@@ -29,5 +30,6 @@ for module_router in (
     payments_router,
     audit_router,
     agent_router,
+    proposals_router,
 ):
     api_router.include_router(module_router)
