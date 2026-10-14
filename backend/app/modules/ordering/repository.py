@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.models.capacity import DailyInventory, Slot
 from app.models.catalogue import MenuItem
 from app.models.identity import User
-from app.models.ordering import Order, OrderLine, Payment, PriceSnapshot
+from app.models.ordering import Order, OrderLine, OrderTransition, Payment, PriceSnapshot
 from app.models.platform import Setting
 
 
@@ -84,6 +84,21 @@ class OrderRepository:
         return self.session.scalars(
             select(Order).where(Order.id == order_id).execution_options(populate_existing=True)
         ).one()
+
+    def find_order(self, order_id: uuid.UUID) -> Order | None:
+        return self.session.scalars(
+            select(Order).where(Order.id == order_id).execution_options(populate_existing=True)
+        ).one_or_none()
+
+    def get_transitions(self, order_id: uuid.UUID) -> list[OrderTransition]:
+        """Oldest first; the id breaks ties between changes in one transaction."""
+        return list(
+            self.session.scalars(
+                select(OrderTransition)
+                .where(OrderTransition.order_id == order_id)
+                .order_by(OrderTransition.at, OrderTransition.id)
+            )
+        )
 
     def get_lines(self, order_id: uuid.UUID) -> list[OrderLine]:
         return list(self.session.scalars(select(OrderLine).where(OrderLine.order_id == order_id)))
