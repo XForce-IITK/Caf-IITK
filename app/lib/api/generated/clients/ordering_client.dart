@@ -5,6 +5,7 @@
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
+import '../models/order_detail_out.dart';
 import '../models/order_out.dart';
 import '../models/place_order_request.dart';
 
@@ -25,4 +26,13 @@ abstract class OrderingClient {
     @Header('Idempotency-Key') required String idempotencyKey,
     @Body() required PlaceOrderRequest body,
   });
+
+  /// Get Order.
+  ///
+  /// FR-40: the order's current status and every transition so far, oldest first.
+  ///
+  /// The client polls this every P-POLL while the order is not finished. Another.
+  /// Student's order answers 404 and is logged as a security event (FR-7).
+  @GET('/api/v1/orders/{order_id}')
+  Future<OrderDetailOut> getOrder({@Path('order_id') required String orderId});
 }
