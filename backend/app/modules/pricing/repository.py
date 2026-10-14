@@ -58,18 +58,20 @@ class PricingRepository:
         rows = self.session.execute(select(Setting.key, Setting.value).where(Setting.key.in_(keys)))
         return {key: value for key, value in rows}
 
-    def has_subsidised_order_on(self, student_id: uuid.UUID, service_date: date) -> bool:
-        return bool(
-            self.session.scalar(
-                select(
-                    exists()
-                    .where(Order.slot_id == Slot.id)
-                    .where(
-                        Order.student_id == student_id,
-                        Order.subsidy_applied,
-                        Order.status.not_in(_SUBSIDY_RELEASED),
-                        Slot.service_date == service_date,
-                    )
-                )
+    def has_subsidised_order_on(
+        self, student_id: uuid.UUID, service_date: date, *, excluding: uuid.UUID | None = None
+    ) -> bool:
+        """`excluding` is an order being re-priced, which may keep its own subsidy."""
+        query = (
+            exists()
+            .where(Order.slot_id == Slot.id)
+            .where(
+                Order.student_id == student_id,
+                Order.subsidy_applied,
+                Order.status.not_in(_SUBSIDY_RELEASED),
+                Slot.service_date == service_date,
             )
         )
+        if excluding is not None:
+            query = query.where(Order.id != excluding)
+        return bool(self.session.scalar(select(query)))

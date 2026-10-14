@@ -39,11 +39,15 @@ class QuoteService:
         with self.session.begin():
             return self.price(student, request)
 
-    def price(self, student: User, request: QuoteRequest) -> QuoteOut:
+    def price(
+        self, student: User, request: QuoteRequest, *, repricing: uuid.UUID | None = None
+    ) -> QuoteOut:
         """Price inside the caller's transaction.
 
         Order placement calls this after it holds its locks, so the order is priced
-        exactly as a quote taken at that moment would be (FR-26).
+        exactly as a quote taken at that moment would be (FR-26). A modification
+        passes the order it re-prices as `repricing`, so that order's own subsidy
+        does not count as the day's subsidy already used (FR-24 step 4).
         """
         settings = self.repo.get_settings("P-MAX_QTY", "P-SUBSIDY_AMT_PAISE", "P-SUBSIDY_CAP_PCT")
         max_qty = int(settings["P-MAX_QTY"])
@@ -71,7 +75,9 @@ class QuoteService:
         ]
         subsidy = SubsidyTerms(
             eligible=student.subsidy_eligible,
-            already_used_today=self.repo.has_subsidised_order_on(student.id, slot.service_date),
+            already_used_today=self.repo.has_subsidised_order_on(
+                student.id, slot.service_date, excluding=repricing
+            ),
             amount_paise=int(settings["P-SUBSIDY_AMT_PAISE"]),
             cap_pct=int(settings["P-SUBSIDY_CAP_PCT"]),
         )

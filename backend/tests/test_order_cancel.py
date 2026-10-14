@@ -436,3 +436,17 @@ def test_the_cancel_transition_is_attributed_to_the_student(
 )
 def test_cancel_refund_amount(status: OrderStatus, paid: int, expected: int) -> None:
     assert cancel_refund_paise(status, paid, 50) == expected
+
+
+def test_a_key_reused_for_a_different_cancel_is_unprocessable(
+    api: TestClient, engine: Engine, thali: dict[str, Any], now: Clock
+) -> None:
+    student = _student(engine)
+    first, second = _place(api, student, thali), _place(api, student, thali)
+    now.now = THIRTY_MIN_BEFORE
+    assert _cancel(api, student, first, key="k").status_code == 200
+
+    response = _cancel(api, student, second, key="k")
+
+    assert response.status_code == 422
+    assert _state(engine, second["id"])[0] is OrderStatus.ACCEPTED
