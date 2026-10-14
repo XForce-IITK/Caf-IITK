@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.enums import OrderStatus
 
@@ -44,3 +44,26 @@ class KitchenQueueOut(BaseModel):
     """FR-42: the current slot, then the next one; fewer near the end of service."""
 
     slots: list[SlotQueueOut]
+
+
+class KitchenAction(StrEnum):
+    """The kitchen's buttons (FR-43) and the transitions of Table 4.6-A they ask for."""
+
+    START = "START"  # T5: ACCEPTED -> PREPARING
+    READY = "READY"  # T8: PREPARING -> READY
+    PICKED_UP = "PICKED_UP"  # T10: READY -> PICKED_UP
+    NO_SHOW = "NO_SHOW"  # T11: READY -> NO_SHOW, after slot end + P-NOSHOW_GRACE
+
+
+class TransitionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: KitchenAction
+
+
+class KitchenOrderOut(BaseModel):
+    id: uuid.UUID
+    status: OrderStatus
+    slot_id: uuid.UUID
+    # Bumped by every transition, so a Student acting on an older view gets 409 (NFR-5).
+    version: int

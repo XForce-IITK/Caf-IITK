@@ -415,6 +415,46 @@
         "title": "ItemStatus",
         "type": "string"
       },
+      "KitchenAction": {
+        "description": "The kitchen's buttons (FR-43) and the transitions of Table 4.6-A they ask for.",
+        "enum": [
+          "START",
+          "READY",
+          "PICKED_UP",
+          "NO_SHOW"
+        ],
+        "title": "KitchenAction",
+        "type": "string"
+      },
+      "KitchenOrderOut": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "slot_id",
+          "version"
+        ],
+        "title": "KitchenOrderOut",
+        "type": "object"
+      },
       "KitchenQueueOut": {
         "description": "FR-42: the current slot, then the next one; fewer near the end of service.",
         "properties": {
@@ -1727,6 +1767,19 @@
         "title": "TransitionOut",
         "type": "object"
       },
+      "TransitionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/KitchenAction"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "TransitionRequest",
+        "type": "object"
+      },
       "UserOut": {
         "properties": {
           "email": {
@@ -2607,6 +2660,77 @@
         "summary": "Flag Item",
         "tags": [
           "catalogue"
+        ]
+      }
+    },
+    "/api/v1/kitchen/orders/{order_id}/transitions": {
+      "post": {
+        "description": "FR-43: Start (T5), Mark Ready (T8), Mark Picked Up (T10) or Mark No-show (T11).\n\nAny other move is refused with 409 and changes nothing (FR-29). A no-show keeps\nthe portions and is not refunded. The order version is bumped, so a Student\nacting on what they saw before gets 409.",
+        "operationId": "transition_kitchen_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitchenOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Kitchen Staff and the Administrator move orders"
+          },
+          "404": {
+            "description": "No such order"
+          },
+          "409": {
+            "description": "Not a legal transition from the order's current state (status in the body), or a no-show before slot end + P-NOSHOW_GRACE (allowed_from in the body)"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was changed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Transition Kitchen Order",
+        "tags": [
+          "kitchen"
         ]
       }
     },
