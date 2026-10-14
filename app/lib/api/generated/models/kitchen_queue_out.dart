@@ -11,11 +11,13 @@ part 'kitchen_queue_out.g.dart';
 /// FR-42: the current slot, then the next one; fewer near the end of service.
 @JsonSerializable()
 class KitchenQueueOut {
-  const KitchenQueueOut({required this.slots});
+  const KitchenQueueOut({required this.earlierSlots, required this.slots});
 
   factory KitchenQueueOut.fromJson(Map<String, Object?> json) =>
       _$KitchenQueueOutFromJson(json);
 
+  @JsonKey(name: 'earlier_slots')
+  final List<SlotQueueOut> earlierSlots;
   final List<SlotQueueOut> slots;
 
   Map<String, Object?> toJson() => _$KitchenQueueOutToJson(this);
