@@ -44,6 +44,9 @@ class KitchenQueueOut(BaseModel):
     """FR-42: the current slot, then the next one; fewer near the end of service."""
 
     slots: list[SlotQueueOut]
+    # Today's ended slots that still have open orders, earliest first: READY orders
+    # waiting to be picked up or marked no-show, and any order left behind.
+    earlier_slots: list[SlotQueueOut]
 
 
 class KitchenAction(StrEnum):
