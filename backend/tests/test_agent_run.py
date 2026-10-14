@@ -6,6 +6,7 @@ the caf_agent role exactly as in production.
 """
 
 import json
+import re
 import threading
 import time as time_module
 import uuid
@@ -50,6 +51,7 @@ from app.modules.agent.orchestrator import PlanningOrchestrator, RunLimits
 from app.modules.agent.service import AgentService
 from app.modules.agent.stub import StubProvider, reply
 from app.modules.agent.tools import ToolRegistry
+from app.modules.agent.validator import OutputValidator, ProposalRejectedError
 from app.modules.proposals.payloads import parse_payload
 from app.worker.jobs import all_jobs
 
@@ -357,7 +359,7 @@ def test_proposals_are_stored_pending_with_their_expiry(
             ),
             _call(
                 "propose_prep_priority",
-                {"slot_id": str(second_slot.id), "item_ids": [dosa, thali], "rationale": "x"},
+                {"slot_id": str(second_slot.id), "item_ids": [dosa], "rationale": "x"},
             ),
             _call(
                 "propose_item_disable",
@@ -440,7 +442,7 @@ def test_malformed_tool_calls_are_logged_invalid_and_stage_nothing(
 def test_during_service_only_prep_priority_can_be_proposed(
     kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
 ) -> None:
-    thali = str(kitchen.thali.id)
+    thali, dosa = str(kitchen.thali.id), str(kitchen.dosa.id)
     run_id, _, _ = run_with(
         _tools(
             _call(
@@ -449,25 +451,46 @@ def test_during_service_only_prep_priority_can_be_proposed(
             ),
             _call(
                 "propose_prep_priority",
-                {"slot_id": str(kitchen.slots[0].id), "item_ids": [thali], "rationale": "r"},
-            ),
-            _call(
-                "propose_prep_priority",
-                {"slot_id": str(kitchen.slots[3].id), "item_ids": [thali], "rationale": "r"},
+                {"slot_id": str(kitchen.slots[1].id), "item_ids": [dosa], "rationale": "r"},
             ),
         ),
         reply("done"),
-        now=_at(12, 20),
+        now=_at(12, 5),
     )
 
-    outcomes = [(c["tool"], c["outcome"]) for c in _logged(engine, "agent_tool_calls", run_id)]
-    assert outcomes == [
+    logged = _logged(engine, "agent_tool_calls", run_id)
+    assert [(c["tool"], c["outcome"]) for c in logged] == [
         ("propose_replenishment_plan", "INVALID"),
-        ("propose_prep_priority", "INVALID"),  # its slot already started
         ("propose_prep_priority", "OK"),
     ]
+    assert "service window has opened" in logged[0]["result_summary"]
     [proposal] = _proposals(engine, run_id)
-    assert proposal["target_slot_id"] == kitchen.slots[3].id
+    assert proposal["target_slot_id"] == kitchen.slots[1].id
+
+
+def test_a_slot_that_has_started_cannot_be_prioritised(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    run_id, _, _ = run_with(
+        _tools(
+            _call(
+                "propose_prep_priority",
+                {
+                    "slot_id": str(kitchen.slots[0].id),
+                    "item_ids": [str(kitchen.thali.id)],
+                    "rationale": "r",
+                },
+            )
+        ),
+        reply("done"),
+        now=_at(12, 5),
+    )
+
+    [logged] = _logged(engine, "agent_tool_calls", run_id)
+    assert (logged["outcome"], logged["result_summary"]) == (
+        "INVALID",
+        "the slot has already started",
+    )
 
 
 # --- Failures and limits ----------------------------------------------------------
@@ -901,7 +924,7 @@ SLOT_IDS = [uuid.UUID(int=0x100 + i) for i in range(4)]
 
 def _heuristic(snapshot: Snapshot, now: datetime, repl_max: int = 200) -> heuristic.HeuristicPlan:
     report = build_report(snapshot, now)
-    return heuristic.plan(snapshot, report, ToolRegistry(snapshot, now), repl_max)
+    return heuristic.plan(snapshot, report, ToolRegistry(snapshot, now, repl_max), repl_max)
 
 
 def test_heuristic_replenishes_the_shortfall_and_orders_prep_by_pending_portions() -> None:
@@ -939,3 +962,130 @@ def test_heuristic_with_nothing_at_risk_drafts_nothing() -> None:
 
     assert plan.proposals == []
     assert "No item is at high risk." in plan.narrative
+
+
+# --- US-42: bad agent output never reaches the Administrator (FR-58) -----------------
+
+
+def test_tc_us42_ac1_a_hallucinated_item_is_discarded_with_the_reason_logged(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    ghost = str(uuid.uuid4())
+    run_id, status, stub = run_with(
+        _tools(
+            _call(
+                "propose_replenishment_plan",
+                {"lines": [{"item_id": ghost, "additional_portions": 5}], "rationale": "r"},
+            )
+        ),
+        reply("done"),
+    )
+
+    assert status is AgentRunStatus.SUCCEEDED
+    [logged] = _logged(engine, "agent_tool_calls", run_id)
+    assert logged["outcome"] == "DISCARDED"
+    assert f"item {ghost} does not exist or is not ACTIVE" in logged["result_summary"]
+    assert "proposal discarded" in (stub.requests[1].messages[-1].content or "")
+    assert _proposals(engine, run_id) == []
+    assert _run(engine, run_id)["source"] == "LLM"  # one bad output: the model got its retry
+
+
+def test_tc_us42_ac2_invalid_json_twice_retries_once_then_uses_the_heuristic(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    bad = _call("propose_replenishment_plan", "{not json")
+    run_id, status, stub = run_with(_tools(bad), _tools(bad), reply("never reached"))
+
+    assert status is AgentRunStatus.SUCCEEDED
+    assert len(stub.requests) == 2  # the original request and exactly one retry
+    assert "not valid JSON" in (stub.requests[1].messages[-1].content or "")
+    saved = _run(engine, run_id)
+    assert saved["source"] == "HEURISTIC"
+    assert "invalid output after 1 retry" in saved["report"]["fallback_reason"]
+    assert [c["outcome"] for c in _logged(engine, "agent_tool_calls", run_id)] == [
+        "INVALID",
+        "INVALID",
+    ]
+    assert {p["source"] for p in _proposals(engine, run_id)} == {"HEURISTIC"}
+
+
+def test_tc_us42_ac3_ten_thousand_portions_fails_the_bounds_check(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    run_id, _, _ = run_with(
+        _tools(
+            _call(
+                "propose_replenishment_plan",
+                {
+                    "lines": [{"item_id": str(kitchen.thali.id), "additional_portions": 10_000}],
+                    "rationale": "r",
+                },
+            )
+        ),
+        reply("done"),
+    )
+
+    [logged] = _logged(engine, "agent_tool_calls", run_id)
+    assert logged["outcome"] == "DISCARDED"
+    assert "10000 additional portions exceed P-REPL_MAX (200)" in logged["result_summary"]
+    assert _proposals(engine, run_id) == []
+
+
+def _validator_snapshot() -> Snapshot:
+    return Snapshot(
+        service_date=DAY.isoformat(),
+        pending_orders=[
+            {"slot_id": "slot-1", "starts_at": "x", "item_id": "a", "portions": 3},
+        ],
+        inventory_levels=[{"item_id": "a", "total": 450, "allocated": 0, "available": 450}],
+        slot_utilisation=[],
+        historical_demand=[],
+        menu_config=[{"item_id": "a", "name": "A"}, {"item_id": "b", "name": "B"}],
+    )
+
+
+@pytest.mark.parametrize(
+    ("proposal_type", "payload", "slot", "reason"),
+    [
+        (ProposalType.DISABLE, {"item_id": "gone"}, None, "does not exist or is not ACTIVE"),
+        (ProposalType.PREP_PRIORITY, {"item_ids": ["a", "gone"]}, "slot-1", "not ACTIVE"),
+        (ProposalType.PREP_PRIORITY, {"item_ids": ["b"]}, "slot-1", "no pending orders"),
+        (
+            ProposalType.REPLENISH,
+            {"lines": [{"item_id": "b", "additional_portions": 5}]},
+            None,
+            "no inventory for the date",
+        ),
+        (
+            ProposalType.REPLENISH,
+            {"lines": [{"item_id": "a", "additional_portions": 201}]},
+            None,
+            "exceed P-REPL_MAX (200)",
+        ),
+        (
+            ProposalType.REPLENISH,
+            {"lines": [{"item_id": "a", "additional_portions": 51}]},
+            None,
+            "would exceed 500 portions",
+        ),
+    ],
+)
+def test_validator_rejects(
+    proposal_type: ProposalType, payload: dict[str, object], slot: str | None, reason: str
+) -> None:
+    with pytest.raises(ProposalRejectedError, match=re.escape(reason)):
+        OutputValidator(_validator_snapshot(), repl_max=200).check(proposal_type, payload, slot)
+
+
+@pytest.mark.parametrize(
+    ("proposal_type", "payload", "slot"),
+    [
+        (ProposalType.DISABLE, {"item_id": "b"}, None),
+        (ProposalType.PREP_PRIORITY, {"item_ids": ["a"]}, "slot-1"),
+        (ProposalType.REPLENISH, {"lines": [{"item_id": "a", "additional_portions": 50}]}, None),
+    ],
+)
+def test_validator_accepts_sound_proposals(
+    proposal_type: ProposalType, payload: dict[str, object], slot: str | None
+) -> None:
+    OutputValidator(_validator_snapshot(), repl_max=200).check(proposal_type, payload, slot)

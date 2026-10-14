@@ -9,8 +9,9 @@ until an Administrator approves it (FR-53 - FR-57).
 or malformed arguments, comes back as a result the orchestrator logs and
 returns to the model as data.
 
-This checks argument shape only. Whether IDs exist and are ACTIVE, and the
-P-REPL_MAX bound, are checked by the output validator (FR-58, CAFIITK-167).
+Argument shape is checked here; whether IDs exist and are ACTIVE, and the
+P-REPL_MAX and 500-portion bounds, are checked by the output validator (FR-58)
+before anything is staged.
 """
 
 import json
@@ -25,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, Validation
 from app.models.enums import ProposalType
 from app.modules.agent.forecast import Snapshot
 from app.modules.agent.llm import ToolCall, ToolSpec
+from app.modules.agent.validator import OutputValidator, ProposalRejectedError
 from app.modules.proposals.payloads import (
     DisablePayload,
     PrepPriorityPayload,
@@ -39,6 +41,7 @@ class Outcome(StrEnum):
     OK = "OK"
     REJECTED = "REJECTED"  # not in the registry: a security event (FR-60)
     INVALID = "INVALID"  # malformed or out-of-shape arguments
+    DISCARDED = "DISCARDED"  # well-formed, but fails a referential or bounds check (FR-58)
 
 
 @dataclass(frozen=True)
@@ -131,9 +134,10 @@ def _error(outcome: Outcome, message: str, args: dict[str, Any]) -> ToolResult:
 class ToolRegistry:
     """Dispatches the model's tool calls against one run's snapshot."""
 
-    def __init__(self, snapshot: Snapshot, now: datetime) -> None:
+    def __init__(self, snapshot: Snapshot, now: datetime, repl_max: int) -> None:
         self._snapshot = snapshot
         self._now = now
+        self._validator = OutputValidator(snapshot, repl_max)
         self._slot_starts = {
             s["slot_id"]: datetime.fromisoformat(s["starts_at"]) for s in snapshot.slot_utilisation
         }
@@ -168,6 +172,11 @@ class ToolRegistry:
             return _error(Outcome.INVALID, f"invalid arguments: {', '.join(fields)}", args)
         except ValueError as exc:
             return _error(Outcome.INVALID, str(exc), args)
+        try:
+            slot = str(staged.target_slot_id) if staged.target_slot_id else None
+            self._validator.check(staged.type, staged.payload, slot)
+        except ProposalRejectedError as exc:
+            return _error(Outcome.DISCARDED, f"proposal discarded: {exc}", args)
         return ToolResult(
             Outcome.OK,
             _json({"staged": staged.type.value, "status": "awaiting Administrator approval"}),
