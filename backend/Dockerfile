@@ -1,4 +1,4 @@
-# One image for caf-api, mockpay and (later) caf-worker; docker-compose.yml
+# One image for caf-api, caf-worker and mockpay; docker-compose.yml
 # picks the process with `command`.
 FROM python:3.12-slim
 
