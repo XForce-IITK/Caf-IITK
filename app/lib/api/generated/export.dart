@@ -3,6 +3,7 @@
 // ignore_for_file: type=lint, unused_import, invalid_annotation_target, unnecessary_import
 
 // Clients
+export 'clients/agent_client.dart';
 export 'clients/inventory_client.dart';
 export 'clients/catalogue_client.dart';
 export 'clients/slots_client.dart';
@@ -12,6 +13,11 @@ export 'clients/ordering_client.dart';
 export 'clients/pricing_client.dart';
 export 'clients/ops_client.dart';
 // Data classes
+export 'models/agent_run_detail_out.dart';
+export 'models/agent_run_out.dart';
+export 'models/agent_run_status.dart';
+export 'models/agent_source.dart';
+export 'models/agent_trigger.dart';
 export 'models/cancel_order_request.dart';
 export 'models/cancelled_order_out.dart';
 export 'models/flag_request.dart';
@@ -33,6 +39,9 @@ export 'models/order_out.dart';
 export 'models/order_status.dart';
 export 'models/payment_status.dart';
 export 'models/place_order_request.dart';
+export 'models/proposal_out.dart';
+export 'models/proposal_status.dart';
+export 'models/proposal_type.dart';
 export 'models/queue_line_out.dart';
 export 'models/queue_order_out.dart';
 export 'models/quote_line_in.dart';
@@ -50,6 +59,7 @@ export 'models/slot_list_out.dart';
 export 'models/slot_out.dart';
 export 'models/slot_queue_out.dart';
 export 'models/token_pair.dart';
+export 'models/tool_call_out.dart';
 export 'models/totals_order.dart';
 export 'models/transition_out.dart';
 export 'models/user_out.dart';

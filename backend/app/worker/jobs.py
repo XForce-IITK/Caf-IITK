@@ -24,3 +24,10 @@ class Job:
 
 
 JOBS: list[Job] = []
+
+
+def all_jobs() -> list[Job]:
+    """Every job the worker runs; modules are imported here so the worker owns the list."""
+    from app.modules.agent.jobs import AGENT_JOBS
+
+    return [*JOBS, *AGENT_JOBS]
