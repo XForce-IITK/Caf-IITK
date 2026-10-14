@@ -40,7 +40,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E28 | The SRS does not say whether a discount window includes its end time; the AI chose start-inclusive, end-exclusive without asking | Specification ambiguity | Writing the pricing engine | Flagged in the PR; team decision pending |
 | E29 | Two simultaneous refreshes of one refresh token revoke all of the user's tokens, logging the user out | **Design risk** | Reproduced during code review | The client now makes one refresh call at a time (CAFIITK-177); the server-side behaviour is unchanged |
 | E30 | After the payment gateway was merged, the test setup loads settings before setting the test secret, so tests sign tokens with the short default key | **Test-validity regression** | Warning count rose from 1 to about 150 | Root cause identified; fix pending |
-| E31 | US-04 AC1–AC2 and US-25 AC1–AC3 were proven on stand-in routes because the real endpoints did not exist yet | Verification gap | Planning | Real-endpoint tests assigned to CAFIITK-132, 153 and 147. Order placement now requires the key, but AC1–AC3 have not yet been repeated on it |
+| E31 | US-04 AC1–AC2 and US-25 AC1–AC3 were proven on stand-in routes because the real endpoints did not exist yet | Verification gap | Planning | Real-endpoint tests assigned to CAFIITK-132, 153 and 147. US-04 AC2 now also passes on the real cancel endpoint (CAFIITK-153), and US-25 AC1–AC2 on order placement. Still on stand-in routes: US-04 AC1 (needs the price-change endpoint, CAFIITK-132) and US-25 AC3 (20 concurrent duplicates) |
 | E32 | The audit-isolation mistake of E21 and E26 was made a third time, in the order-placement tests | Test defect | Two tests passed alone and failed in the full suite | Assertions scoped to the test's own order |
 | E33 | Order placement was first written with its own copies of the orderable and bookable rules and its own clock module, while two open PRs were adding the same rules and a different file at the same path | Duplication and merge-conflict risk | Reading the open branches before raising the PR | Clock module made identical to the teammates' file; branch rebased once their PRs merged and switched to the shared rules |
 | E34 | FR-33 is listed on both CAFIITK-147 and CAFIITK-148; the AI implemented the release of holds on a failed payment under 147 while the owner of 148 had that story in progress | Scope overlap | Reading the sprint board before starting | Flagged to the author and in the PR; the owner of 148 then wrote acceptance tests only |
@@ -234,7 +234,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** AC1, 200 concurrent orders for 50 portions and 30 seats across two API processes, 10 consecutive runs, each required to give exactly 30 accepted orders, 170 refusals, 20 portions and no seats left. AC2, five direct database writes that would oversell or go negative, each refused by a CHECK constraint with the row left unchanged. No application code changed.
 - **How it was checked:** the full suite locally and on the CI runners. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
 - **What changed:** the AI reported that AC3 and AC4 need the modify and cancel endpoints, which are Sprint 2 work, and offered three ways forward. The author chose to deliver AC1 and AC2 now and carry the other two into Sprint 2 rather than pull that work forward. AC3 and AC4 are in the suite as skipped tests with the reason. The AI read the ticket's wording of AC2 ("a portion count of 0 ... set it to 1") as "allocate one more than exists" and said so in the PR.
-- **Outcome:** accepted for AC1 and AC2. The story stays open.
+- **Outcome:** accepted for AC1 and AC2. AC3 and AC4 followed in Sprint 2 (see the later entry), and the story is complete.
 
 ### Portions follow the order lifecycle (CAFIITK-138, US-13) — AC1 and AC2
 
@@ -242,7 +242,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** AC1, ordering 2 of 10 leaves 8 while the order awaits payment, observed from inside the payment call, and still 8 once accepted. AC2, a declined payment returns the 2 portions with no further action. No application code changed; the behaviour was delivered with order placement.
 - **How it was checked:** the full suite locally and on the CI runners. The PR was approved by a teammate (Suryansh) with no change requests, then merged.
 - **What changed:** AC3 and AC4 cancel an order and were carried into Sprint 2 by the same decision as for US-30. They are in the suite as skipped tests with the reason. The rule they will test is already in the state table: cancelling an accepted order returns portions and seat, cancelling one in preparation returns only the seat.
-- **Outcome:** accepted for AC1 and AC2. The story stays open.
+- **Outcome:** accepted for AC1 and AC2. AC3 and AC4 followed in Sprint 2 (see the later entry), and the story is complete.
 
 ### Sprint 2 planning and Jira set-up
 
@@ -276,7 +276,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **AI produced:** one screen with those four steps. A refused order names the item or slot that was unavailable; a changed price is shown and must be confirmed again (FR-26); a failed payment keeps the cart. Each priced quote gets its own idempotency key, reused if that confirmation is repeated.
 - **How it was checked:** 64 client tests in all, with analysis, the coverage gate and the release web build on the author's machine. The author then ran the flow by hand against the local stack: ordering, a declined payment, and a confirmation repeated across an API outage, which reached the server once the API returned and carried the same key as the failed attempts. The PR was approved by a teammate (Shashi) with no change requests, then merged.
 - **What changed:** an earlier login test was corrected, because the dashboard now loads data as soon as it opens.
-- **Outcome:** first half accepted. The story stays open: modify, cancel and order tracking wait for endpoints owned by other members.
+- **Outcome:** first half accepted. The story was completed by the second half (see the later entry).
 
 ### Agent schema and proposal format (CAFIITK-164, first part)
 
@@ -509,6 +509,6 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 
 - **Asked for:** at slot start minus P-AUTO_PREP, every order still ACCEPTED in that slot moves to PREPARING, with SYSTEM as the actor (FR-44). Reassigned to the author when the sprint was revised, and started once the kitchen transitions (CAFIITK-159) were merged.
 - **AI produced:** a caf-worker job, every 30 seconds, that uses the kitchen's own Start transition with no user: each order is locked and its status re-checked, then the transition, an audit entry with actor SYSTEM and the version bump are recorded by the shared order code, so a Student acting on an older view is refused as after the kitchen's Start. One short transaction per order. The job takes no payments; a payment call on this path fails.
-- **How it was checked:** 8 tests against PostgreSQL, including the acceptance criterion (nothing at 12:19 for a 12:30 slot, PREPARING with actor SYSTEM at 12:20), only ACCEPTED orders moving, repeat runs, a late run, the version bump, an order cancelled meanwhile, and the job run end to end. A test caught one slip while drafting (E64). CI passed, including the full suite. The PR was approved by a teammate (Suryansh) with no change requests.
-- **What changed:** the PR's explanation of two local rush-test failures was corrected (E65).
+- **How it was checked:** 8 tests against PostgreSQL, including the acceptance criterion (nothing at 12:19 for a 12:30 slot, PREPARING with actor SYSTEM at 12:20), only ACCEPTED orders moving, repeat runs, a late run, the version bump, an order cancelled meanwhile, and the job run end to end. A test caught one slip while drafting (E73). CI passed, including the full suite. The PR was approved by a teammate (Suryansh) with no change requests.
+- **What changed:** the PR's explanation of two local rush-test failures was corrected (E74).
 - **Outcome:** accepted.
