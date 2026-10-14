@@ -64,6 +64,15 @@ class AgentLimitError(Exception):
     """The run exceeded P-AGENT_MAX_CALLS or P-AGENT_RUN_TIMEOUT."""
 
 
+class AgentOutputError(Exception):
+    """The model's output stayed invalid after its one retry (FR-58)."""
+
+
+# FR-58: the model may retry once after invalid output; the next one ends LLM planning.
+INVALID_OUTPUT_RETRIES = 1
+_INVALID = (Outcome.INVALID, Outcome.DISCARDED)
+
+
 @dataclass(frozen=True)
 class RunLimits:
     max_calls: int
@@ -113,11 +122,13 @@ class PlanningOrchestrator:
                 return AgentRunStatus.SUCCEEDED
         extra: dict[str, Any] = {}
         try:
-            narrative, staged = self._plan(run_id, snapshot, report, now)
+            narrative, staged = self._plan(run_id, snapshot, report, now, repl_max)
             source = AgentSource.LLM
-        except (LLMUnavailableError, AgentLimitError) as exc:
+        except (LLMUnavailableError, AgentLimitError, AgentOutputError) as exc:
             log.warning("agent run %s falls back to the heuristic: %s", run_id, exc)
-            fallback = heuristic.plan(snapshot, report, ToolRegistry(snapshot, now), repl_max)
+            fallback = heuristic.plan(
+                snapshot, report, ToolRegistry(snapshot, now, repl_max), repl_max
+            )
             narrative, staged = fallback.narrative, fallback.proposals
             source = AgentSource.HEURISTIC
             extra = {"fallback_reason": str(exc)}
@@ -135,9 +146,15 @@ class PlanningOrchestrator:
         return AgentRunStatus.SUCCEEDED
 
     def _plan(
-        self, run_id: uuid.UUID, snapshot: Snapshot, report: dict[str, Any], now: datetime
+        self,
+        run_id: uuid.UUID,
+        snapshot: Snapshot,
+        report: dict[str, Any],
+        now: datetime,
+        repl_max: int,
     ) -> tuple[str | None, list[StagedProposal]]:
-        registry = ToolRegistry(snapshot, now)
+        registry = ToolRegistry(snapshot, now, repl_max)
+        invalid_outputs = 0
         briefing = {
             "service_date": snapshot.service_date,
             "now": now.isoformat(),
@@ -188,6 +205,12 @@ class PlanningOrchestrator:
                         actor_role="AGENT",
                         details={"run_id": str(run_id), "tool": call.name[:64]},
                     )
+                if result.outcome in _INVALID:
+                    invalid_outputs += 1
+                    if invalid_outputs > INVALID_OUTPUT_RETRIES:
+                        raise AgentOutputError(
+                            f"invalid output after {INVALID_OUTPUT_RETRIES} retry: {result.summary}"
+                        )
                 if result.staged is not None:
                     # A later proposal of the same type for the same target replaces it.
                     staged[result.staged.target] = result.staged
