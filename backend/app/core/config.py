@@ -7,7 +7,7 @@ Administrator-configurable parameters (Table 4.0-B of the SRS) live in the
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_JWT_SECRET = "change-me-in-.env"
@@ -38,11 +38,27 @@ class Settings(BaseSettings):
     access_ttl_min: int = 15
     refresh_ttl_days: int = 7
 
+    # LLM for the Kitchen Planning Agent (OpenAI). Without a key every run uses the
+    # heuristic planner (FR-59). The key is a SecretStr, so it never appears in a repr.
+    llm_api_key: SecretStr | None = None
+    llm_model: str = "gpt-4o-mini"
+    llm_base_url: str | None = None
+    llm_timeout_s: float = 20.0  # P-LLM_TIMEOUT
+    agent_daily_cap: int = 50  # P-AGENT_DAILY_CAP
+    llm_breaker_threshold: int = 3
+    llm_breaker_cooldown_s: float = 60.0
+
     # Deployment-time seed accounts (FR-2); see app/seed.py. Unset means not seeded.
     seed_admin_email: str | None = None
     seed_admin_password: str | None = None
     seed_kitchen_email: str | None = None
     seed_kitchen_password: str | None = None
+
+    @field_validator("llm_api_key", mode="before")
+    @classmethod
+    def _blank_key_means_none(cls, value: object) -> object:
+        # Docker Compose passes an unset key as an empty string.
+        return None if value == "" else value
 
     @model_validator(mode="after")
     def _require_strong_jwt_secret_in_production(self) -> "Settings":
