@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import delete, select
@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.capacity import DailyInventory, Slot
 from app.models.catalogue import MenuItem
-from app.models.enums import PaymentCause, PaymentKind, PaymentStatus
+from app.models.enums import OrderStatus, PaymentCause, PaymentKind, PaymentStatus
 from app.models.identity import User
 from app.models.ordering import (
     Order,
@@ -92,6 +92,17 @@ class OrderRepository:
         return self.session.scalars(
             select(Order).where(Order.id == order_id).execution_options(populate_existing=True)
         ).one()
+
+    def accepted_orders_starting_by(self, cutoff: datetime) -> list[uuid.UUID]:
+        """ACCEPTED orders whose slot starts at or before `cutoff`, in lock order (NFR-4)."""
+        return list(
+            self.session.scalars(
+                select(Order.id)
+                .join(Slot, Slot.id == Order.slot_id)
+                .where(Order.status == OrderStatus.ACCEPTED, Slot.starts_at <= cutoff)
+                .order_by(Order.id)
+            )
+        )
 
     def find_order(self, order_id: uuid.UUID) -> Order | None:
         return self.session.scalars(
