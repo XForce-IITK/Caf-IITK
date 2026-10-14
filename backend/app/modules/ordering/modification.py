@@ -358,7 +358,15 @@ class ModifyService(OrderService):
                     **actor,
                 )
         if change.moves_slot:
-            self._change_seat(self.repo.lock_slot(change.old_slot_id), -1, order.id, actor)
+            # Both slots, by ascending id (NFR-4), even though only the old one's counter
+            # changes: setting orders.slot_id below takes a key-share lock on the new slot
+            # through the foreign key, which would otherwise come after the old slot's
+            # lock whatever their ids, and deadlock against a move the other way.
+            slots = {
+                slot_id: self.repo.lock_slot(slot_id)
+                for slot_id in sorted([change.old_slot_id, change.new_slot_id])
+            }
+            self._change_seat(slots[change.old_slot_id], -1, order.id, actor)
 
         before = {
             "slot_id": str(order.slot_id),
