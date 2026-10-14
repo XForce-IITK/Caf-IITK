@@ -82,6 +82,8 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E70 | Two client defects in the staff dashboards: the kitchen and run-history pollers kept a timer running after their screen closed, and after a refresh an order's error message could show under a different order | Implementation defect | Widget tests, before the PR | Timers cancelled when the screen closes; slot cards and orders keyed by ID |
 | E71 | #35, #43, #47, #50 and #55 were not tried by hand against the running Docker Compose stack; each PR says so | **Verification gap** | Stated in each PR | Pending: an end-to-end walkthrough before the D2 release |
 | E72 | For CAFIITK-134 the AI merged `develop` into the branch before merging, instead of rebasing as the revised sprint plan's rule 5 asks | Process lapse | The AI noticed when reading the revised plan | Later PRs rebased just before merge |
+| E73 | The job that starts preparation was registered in an outdated version of the worker's job list, written before a teammate added another job; it would have left auto-prep unscheduled | Stale-code slip | Failing test | Registered in the current list beside the teammate's job |
+| E74 | Local failures of the US-30 AC1 and AC4 rush tests were put down to machine load in a PR without evidence, repeating E63 | Unverified attribution | Reading E62 and E63 in this log | Investigated: a deadlock fix (E62, #54) was not yet merged, and the machine had run out of local ports (about 16,500 closed connections against 16,384 ports). PR corrected; CI, which runs both tests, passed |
 
 ---
 
@@ -503,4 +505,10 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
   - The AI checked that the backend accepts the date format the generated client puts in URL paths (related to E41).
   - Not tried by hand (E71).
   - Both PRs were approved by a teammate (Suryansh) with no change requests, then merged.
+### Preparation starts automatically (CAFIITK-160, US-35)
+
+- **Asked for:** at slot start minus P-AUTO_PREP, every order still ACCEPTED in that slot moves to PREPARING, with SYSTEM as the actor (FR-44). Reassigned to the author when the sprint was revised, and started once the kitchen transitions (CAFIITK-159) were merged.
+- **AI produced:** a caf-worker job, every 30 seconds, that uses the kitchen's own Start transition with no user: each order is locked and its status re-checked, then the transition, an audit entry with actor SYSTEM and the version bump are recorded by the shared order code, so a Student acting on an older view is refused as after the kitchen's Start. One short transaction per order. The job takes no payments; a payment call on this path fails.
+- **How it was checked:** 8 tests against PostgreSQL, including the acceptance criterion (nothing at 12:19 for a 12:30 slot, PREPARING with actor SYSTEM at 12:20), only ACCEPTED orders moving, repeat runs, a late run, the version bump, an order cancelled meanwhile, and the job run end to end. A test caught one slip while drafting (E64). CI passed, including the full suite. The PR was approved by a teammate (Suryansh) with no change requests.
+- **What changed:** the PR's explanation of two local rush-test failures was corrected (E65).
 - **Outcome:** accepted.
