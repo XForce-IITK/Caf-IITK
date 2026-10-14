@@ -8,7 +8,7 @@ Sprint 1 is merged; Sprint 2 (ends 14 Oct 2026) is in progress. See `README.md` 
 
 Backend (`backend/`): module packages under `app/modules/` (`identity`, `catalogue`, `inventory`, `slots`, `pricing`, `ordering`, `payments`, `audit`), all core tables from SADD Figure 2.5 in Alembic migration `0001`, and `mockpay` as a separate service. Working endpoints: register, login, refresh, logout, `me`; onboard an item and browse the menu; set daily inventory; configure a service day and browse slots; price quote; place an order (reserve → authorise → confirm, with idempotency keys). Not built yet: modify, cancel and order tracking, the kitchen queue and transitions, `caf-worker` and the hold sweeper, the agent and proposals, audit search.
 
-Client (`app/`): the API client in `lib/api/generated/` is generated from `app/openapi.json`; login, register and role-based routing in `lib/auth/` and `lib/router.dart`; Dio interceptors in `lib/api/interceptors.dart`; the Student order flow in `lib/student/`. The Kitchen and Administrator dashboards are placeholders.
+Client (`app/`): the API client in `lib/api/generated/` is generated from `app/openapi.json`; login, register and role-based routing in `lib/auth/` and `lib/router.dart`; Dio interceptors in `lib/api/interceptors.dart`; the Student flow in `lib/student/` (order, track, cancel, modify). The Kitchen and Administrator dashboards are placeholders.
 
 Backend choices made in the skeleton: synchronous SQLAlchemy with psycopg 3 (FastAPI runs sync endpoints in a threadpool); deploy-time settings come from `CAF_*` environment variables (`app/core/config.py`); administrator-configurable parameters (SRS Table 4.0-B) are seeded into the `settings` table.
 

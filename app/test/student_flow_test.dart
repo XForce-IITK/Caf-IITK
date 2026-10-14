@@ -1,6 +1,7 @@
 import 'package:caf_app/auth/session.dart';
 import 'package:caf_app/main.dart';
 import 'package:caf_app/student/format.dart';
+import 'package:caf_app/student/student_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -147,6 +148,20 @@ class _Cafe {
     'version': 3,
     'refund': {'amount_paise': 14000, 'status': 'SUCCEEDED'},
   });
+  // Changing 2 Thalis to 1 Thali in the 12:30 slot: ₹140 paid, ₹70 new total.
+  Reply Function(Seen request) modificationQuote = (_) => Reply(200, {
+    'quote': {..._quote(payable: 7000), 'slot_id': 's2'},
+    'paid_paise': 14000,
+    'difference_paise': -7000,
+  });
+  Reply Function(Seen request) modify = (_) => Reply(200, {
+    ..._order('ACCEPTED'),
+    'slot_id': 's2',
+    'version': 2,
+    'paid_paise': 7000,
+    'difference_paise': -7000,
+    'refund': {'amount_paise': 7000, 'status': 'SUCCEEDED'},
+  });
   final delays = <Duration>[];
 
   _Cafe() {
@@ -160,7 +175,8 @@ class _Cafe {
       slotsUrl => Reply(200, {'service_date': '2026-10-06', 'slots': slots}),
       quotesUrl => quote(r),
       ordersUrl => placeOrder(r),
-      '$ordersUrl/o1' => tracking(r),
+      '$ordersUrl/o1' => r.method == 'PATCH' ? modify(r) : tracking(r),
+      '$ordersUrl/o1/quote' => modificationQuote(r),
       '$ordersUrl/o1/cancel' => cancel(r),
       _ => const Reply(204),
     },
@@ -183,6 +199,10 @@ class _Cafe {
     );
     await tester.pumpAndSettle();
   }
+}
+
+ProviderContainer container(WidgetTester tester) {
+  return ProviderScope.containerOf(tester.element(find.byType(CafApp)));
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {
@@ -928,6 +948,407 @@ void main() {
         hasLength(1),
       );
       expect(text(tester, 'cancel-result'), 'Order cancelled. ₹140 refunded.');
+    });
+  });
+
+  group('changing an order (FR-35)', () {
+    Future<_Cafe> placed(
+      WidgetTester tester, {
+      String status = 'ACCEPTED',
+    }) async {
+      final cafe = _Cafe()..tracking = (_) => Reply(200, _tracked(status));
+      await cafe.open(tester);
+      await _reviewTwoThalis(tester);
+      await _tap(tester, 'confirm');
+      return cafe;
+    }
+
+    String text(WidgetTester tester, String key) {
+      return tester.widget<Text>(find.byKey(Key(key))).data!;
+    }
+
+    /// One Thali instead of two, in the 12:30 slot.
+    Future<void> draftOneThaliLater(WidgetTester tester) async {
+      await _tap(tester, 'change-order');
+      await _tap(tester, 'mod-remove-thali');
+      await _tap(tester, 'mod-slot-s2');
+    }
+
+    testWidgets('the editor starts from what the order holds now', (
+      tester,
+    ) async {
+      await placed(tester);
+
+      await _tap(tester, 'change-order');
+
+      expect(text(tester, 'mod-quantity-thali'), '2');
+      expect(text(tester, 'mod-quantity-lassi'), '0');
+      final chip = tester.widget<ChoiceChip>(
+        find.byKey(const Key('mod-slot-s1')),
+      );
+      expect(chip.selected, isTrue);
+      // Nothing changed yet, so there is nothing to price.
+      expect(_enabled(tester, 'mod-review'), isFalse);
+      // Cancelling is hidden while a change is being drafted.
+      expect(find.byKey(const Key('cancel-order')), findsNothing);
+    });
+
+    testWidgets('the order keeps its own portions and seat available to it', (
+      tester,
+    ) async {
+      final cafe = _Cafe();
+      cafe.tracking = (_) => Reply(200, _tracked('ACCEPTED'));
+      await cafe.open(tester);
+      await _reviewTwoThalis(tester);
+      await _tap(tester, 'confirm');
+      // After the order, the menu shows no Thali left and the slot full.
+      cafe.items = [_item('thali', 'Thali', 8000, left: 0, reason: 'SOLD_OUT')];
+      cafe.slots = [
+        _slot(
+          's1',
+          '2026-10-06T06:45:00Z',
+          '2026-10-06T07:00:00Z',
+          seats: 0,
+          reason: 'FULL',
+        ),
+        _slot(
+          's3',
+          '2026-10-06T07:15:00Z',
+          '2026-10-06T07:30:00Z',
+          reason: 'FULL',
+        ),
+      ];
+      container(tester).invalidate(menuProvider);
+      container(tester).invalidate(slotsProvider);
+      await tester.pumpAndSettle();
+
+      await _tap(tester, 'change-order');
+
+      // Two Thalis are the order's own, so it can drop to one and go back to two.
+      expect(_enabled(tester, 'mod-add-thali'), isFalse);
+      await _tap(tester, 'mod-remove-thali');
+      expect(_enabled(tester, 'mod-add-thali'), isTrue);
+      // Its own slot can be chosen although full; another full one cannot.
+      expect(_enabled(tester, 'mod-slot-s1'), isTrue);
+      expect(_enabled(tester, 'mod-slot-s3'), isFalse);
+    });
+
+    testWidgets('a cheaper change is priced, confirmed and refunded', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      await draftOneThaliLater(tester);
+
+      await _tap(tester, 'mod-review');
+
+      expect(cafe.server.to('$ordersUrl/o1/quote').single.data, {
+        'slot_id': 's2',
+        'lines': [
+          {'item_id': 'thali', 'qty': 1},
+        ],
+      });
+      expect(text(tester, 'modify-quote'), 'New total ₹70. You get ₹70 back.');
+
+      cafe.tracking = (_) => Reply(200, {
+        ..._tracked('ACCEPTED'),
+        'slot_id': 's2',
+        'paid_paise': 7000,
+        'price': {..._quote(payable: 7000), 'slot_id': 's2'},
+      });
+      await _tap(tester, 'mod-confirm');
+
+      final patch = cafe.server.requests.singleWhere(
+        (r) => r.method == 'PATCH',
+      );
+      expect(patch.path, '$ordersUrl/o1');
+      expect(patch.data, {
+        'slot_id': 's2',
+        'lines': [
+          {'item_id': 'thali', 'qty': 1},
+        ],
+        'version': 1,
+        'quoted_payable_paise': 7000,
+      });
+      expect(
+        patch.headers['Idempotency-Key'],
+        matches(RegExp(r'^[0-9a-f-]{36}$')),
+      );
+      expect(text(tester, 'modify-result'), 'Order changed. ₹70 refunded.');
+      expect(find.byKey(const Key('modify-editor')), findsNothing);
+      expect(find.text('You paid ₹70.'), findsOneWidget);
+      expect(find.text('Pick it up between 12:30 – 12:45.'), findsOneWidget);
+    });
+
+    testWidgets('a dearer change says how much more is charged', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      cafe.modificationQuote = (_) => Reply(200, {
+        'quote': _quote(payable: 21000),
+        'paid_paise': 14000,
+        'difference_paise': 7000,
+      });
+      cafe.modify = (_) => Reply(200, {
+        ..._order('ACCEPTED'),
+        'version': 2,
+        'paid_paise': 21000,
+        'difference_paise': 7000,
+        'refund': null,
+      });
+      await _tap(tester, 'change-order');
+      await _tap(tester, 'mod-slot-s2');
+
+      await _tap(tester, 'mod-review');
+      expect(text(tester, 'modify-quote'), 'New total ₹210. You pay ₹70 more.');
+      await _tap(tester, 'mod-confirm');
+
+      expect(
+        text(tester, 'modify-result'),
+        'Order changed. You paid ₹70 more.',
+      );
+    });
+
+    testWidgets('a same-price change and a pending refund are described', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      cafe.modificationQuote = (_) => Reply(200, {
+        'quote': _quote(),
+        'paid_paise': 14000,
+        'difference_paise': 0,
+      });
+      cafe.modify = (_) => Reply(200, {
+        ..._order('ACCEPTED'),
+        'version': 2,
+        'difference_paise': 0,
+        'refund': null,
+      });
+      await _tap(tester, 'change-order');
+      await _tap(tester, 'mod-slot-s2');
+      await _tap(tester, 'mod-review');
+      expect(
+        text(tester, 'modify-quote'),
+        'New total ₹140. The price stays the same.',
+      );
+      await _tap(tester, 'mod-confirm');
+      expect(
+        text(tester, 'modify-result'),
+        'Order changed. The price is the same.',
+      );
+
+      cafe.modify = (_) => Reply(200, {
+        ..._order('ACCEPTED'),
+        'version': 3,
+        'difference_paise': -7000,
+        'refund': {'amount_paise': 7000, 'status': 'PENDING'},
+      });
+      // The tracked order is still in the 12:15 slot, so the editor starts there.
+      await _tap(tester, 'change-order');
+      await _tap(tester, 'mod-slot-s2');
+      await _tap(tester, 'mod-review');
+      await _tap(tester, 'mod-confirm');
+      expect(
+        text(tester, 'modify-result'),
+        'Order changed. A refund of ₹70 is on its way.',
+      );
+    });
+
+    testWidgets('editing the draft after pricing it discards the price', (
+      tester,
+    ) async {
+      await placed(tester);
+      await draftOneThaliLater(tester);
+      await _tap(tester, 'mod-review');
+      expect(find.byKey(const Key('modify-quote')), findsOneWidget);
+
+      await _tap(tester, 'mod-slot-s1');
+
+      expect(find.byKey(const Key('modify-quote')), findsNothing);
+      expect(find.byKey(const Key('mod-review')), findsOneWidget);
+    });
+
+    testWidgets('discarding returns to the order unchanged', (tester) async {
+      final cafe = await placed(tester);
+      await draftOneThaliLater(tester);
+
+      await _tap(tester, 'mod-discard');
+
+      expect(find.byKey(const Key('modify-editor')), findsNothing);
+      expect(find.byKey(const Key('change-order')), findsOneWidget);
+      expect(cafe.server.requests.where((r) => r.method == 'PATCH'), isEmpty);
+    });
+
+    testWidgets('an order being prepared cannot be changed', (tester) async {
+      await placed(tester, status: 'PREPARING');
+
+      expect(find.byKey(const Key('change-order')), findsNothing);
+    });
+
+    testWidgets('TC-US27-AC2 client side: a sold-out item is named and the '
+        'order is unchanged', (tester) async {
+      final cafe = await placed(tester);
+      cafe.modify = (_) => const Reply(409, {
+        'detail': {
+          'message': 'Items or slot unavailable',
+          'item_ids': ['thali'],
+          'slot_id': null,
+        },
+      });
+      await draftOneThaliLater(tester);
+      await _tap(tester, 'mod-review');
+
+      await _tap(tester, 'mod-confirm');
+
+      expect(
+        text(tester, 'modify-error'),
+        'No longer available: Thali. Your order is unchanged.',
+      );
+      expect(find.byKey(const Key('modify-quote')), findsNothing);
+    });
+
+    testWidgets('TC-US27-AC3 client side: a declined charge leaves the order '
+        'as it was', (tester) async {
+      final cafe = await placed(tester);
+      cafe.modify = (_) => const Reply(402, {
+        'detail': {'message': 'payment declined', 'outcome': 'DECLINED'},
+      });
+      await draftOneThaliLater(tester);
+      await _tap(tester, 'mod-review');
+
+      await _tap(tester, 'mod-confirm');
+
+      expect(text(tester, 'modify-error'), contains('could not be charged'));
+      expect(find.byKey(const Key('modify-result')), findsNothing);
+    });
+
+    testWidgets('a changed price must be confirmed again with a new key', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      var attempts = 0;
+      cafe.modify = (_) {
+        attempts++;
+        return attempts == 1
+            ? Reply(409, {
+                'detail': {
+                  'message': 'Price changed',
+                  'quote': _quote(payable: 8000),
+                },
+              })
+            : Reply(200, {
+                ..._order('ACCEPTED'),
+                'version': 2,
+                'difference_paise': -6000,
+                'refund': {'amount_paise': 6000, 'status': 'SUCCEEDED'},
+              });
+      };
+      await draftOneThaliLater(tester);
+      await _tap(tester, 'mod-review');
+
+      await _tap(tester, 'mod-confirm');
+      expect(text(tester, 'modify-error'), contains('The price changed'));
+      expect(text(tester, 'modify-quote'), 'New total ₹80. You get ₹60 back.');
+      await _tap(tester, 'mod-confirm');
+
+      final [first, second] = cafe.server.requests
+          .where((r) => r.method == 'PATCH')
+          .toList();
+      expect((second.data! as Map)['quoted_payable_paise'], 8000);
+      expect(
+        second.headers['Idempotency-Key'],
+        isNot(first.headers['Idempotency-Key']),
+      );
+      expect(text(tester, 'modify-result'), 'Order changed. ₹60 refunded.');
+    });
+
+    for (final (message, shown) in [
+      (
+        'the modification cut-off has passed',
+        'It is too close to your pickup time to change this order.',
+      ),
+      (
+        'the order has changed',
+        'The order changed while you were editing it. Review the change again.',
+      ),
+      (
+        'order is PREPARING',
+        'This order can no longer be changed. Your order is unchanged.',
+      ),
+    ]) {
+      testWidgets('a refusal "$message" is explained', (tester) async {
+        final cafe = await placed(tester);
+        cafe.modify = (_) => Reply(409, {
+          'detail': {'message': message, 'status': 'ACCEPTED', 'version': 1},
+        });
+        await draftOneThaliLater(tester);
+        await _tap(tester, 'mod-review');
+
+        await _tap(tester, 'mod-confirm');
+
+        expect(text(tester, 'modify-error'), shown);
+        expect(find.byKey(const Key('modify-quote')), findsNothing);
+      });
+    }
+
+    testWidgets('a plain refusal from the server is shown as it is', (
+      tester,
+    ) async {
+      final cafe = await placed(tester);
+      cafe.modify = (_) => const Reply(409, {
+        'detail':
+            'The order changed while the difference was being charged; '
+            'nothing was kept',
+      });
+      await draftOneThaliLater(tester);
+      await _tap(tester, 'mod-review');
+
+      await _tap(tester, 'mod-confirm');
+
+      expect(text(tester, 'modify-error'), contains('nothing was kept'));
+    });
+
+    testWidgets('a price that cannot be quoted is reported', (tester) async {
+      final cafe = await placed(tester);
+      cafe.modificationQuote = (_) =>
+          const Reply(422, {'detail': 'quantity per item may not exceed 3'});
+      await draftOneThaliLater(tester);
+
+      await _tap(tester, 'mod-review');
+
+      expect(
+        text(tester, 'modify-error'),
+        'quantity per item may not exceed 3',
+      );
+    });
+
+    testWidgets('NFR-18: after a network failure, confirming again reuses the '
+        'same key', (tester) async {
+      final cafe = await placed(tester);
+      cafe.modify = (r) => throw networkFailure(r);
+      await draftOneThaliLater(tester);
+      await _tap(tester, 'mod-review');
+
+      await _tap(tester, 'mod-confirm');
+      expect(
+        text(tester, 'modify-error'),
+        contains('Could not reach the server'),
+      );
+      expect(find.byKey(const Key('modify-quote')), findsOneWidget);
+
+      cafe.modify = (_) => Reply(200, {
+        ..._order('ACCEPTED'),
+        'version': 2,
+        'difference_paise': -7000,
+        'refund': {'amount_paise': 7000, 'status': 'SUCCEEDED'},
+      });
+      await _tap(tester, 'mod-confirm');
+
+      final keys = cafe.server.requests
+          .where((r) => r.method == 'PATCH')
+          .map((r) => r.headers['Idempotency-Key'])
+          .toSet();
+      expect(keys, hasLength(1));
+      expect(text(tester, 'modify-result'), 'Order changed. ₹70 refunded.');
     });
   });
 
