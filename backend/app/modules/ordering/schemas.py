@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import OrderStatus, Role
+from app.models.enums import OrderStatus, PaymentStatus, Role
 from app.models.ordering import Order, OrderTransition, PriceSnapshot
 from app.modules.pricing.schemas import QuoteOut, QuoteRequest
 
@@ -75,3 +75,19 @@ def _order_fields(order: Order, snapshot: PriceSnapshot) -> dict[str, object]:
         "price": QuoteOut.model_validate(snapshot.breakdown),
         "created_at": order.created_at,
     }
+
+
+class CancelOrderRequest(BaseModel):
+    """The order version the Student saw when confirming (NFR-5)."""
+
+    version: Annotated[int, Field(ge=1)]
+
+
+class RefundOut(BaseModel):
+    amount_paise: int
+    # PENDING until mockpay acknowledges it; the outbox retries it (FR-39).
+    status: PaymentStatus
+
+
+class CancelledOrderOut(OrderOut):
+    refund: RefundOut

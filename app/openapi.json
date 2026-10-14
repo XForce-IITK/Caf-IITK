@@ -162,6 +162,74 @@
         "title": "AgentTrigger",
         "type": "string"
       },
+      "CancelOrderRequest": {
+        "description": "The order version the Student saw when confirming (NFR-5).",
+        "properties": {
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "title": "CancelOrderRequest",
+        "type": "object"
+      },
+      "CancelledOrderOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "paid_paise": {
+            "title": "Paid Paise",
+            "type": "integer"
+          },
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "refund": {
+            "$ref": "#/components/schemas/RefundOut"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "subsidy_applied": {
+            "title": "Subsidy Applied",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "slot_id",
+          "version",
+          "paid_paise",
+          "subsidy_applied",
+          "price",
+          "created_at",
+          "refund"
+        ],
+        "title": "CancelledOrderOut",
+        "type": "object"
+      },
       "FlagRequest": {
         "additionalProperties": false,
         "properties": {
@@ -602,6 +670,15 @@
         "title": "OrderStatus",
         "type": "string"
       },
+      "PaymentStatus": {
+        "enum": [
+          "PENDING",
+          "SUCCEEDED",
+          "FAILED"
+        ],
+        "title": "PaymentStatus",
+        "type": "string"
+      },
       "PlaceOrderRequest": {
         "additionalProperties": false,
         "description": "The cart and slot that were quoted, plus the amount the Student agreed to (FR-26).",
@@ -938,6 +1015,23 @@
           "refresh_token"
         ],
         "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RefundOut": {
+        "properties": {
+          "amount_paise": {
+            "title": "Amount Paise",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          }
+        },
+        "required": [
+          "amount_paise",
+          "status"
+        ],
+        "title": "RefundOut",
         "type": "object"
       },
       "RegisterRequest": {
@@ -2274,6 +2368,82 @@
           }
         ],
         "summary": "Get Order",
+        "tags": [
+          "ordering"
+        ]
+      }
+    },
+    "/api/v1/orders/{order_id}/cancel": {
+      "post": {
+        "description": "FR-37, FR-39: cancel from ACCEPTED (100 % refund, seat and portions restored) or\nPREPARING (P-LATE_REFUND_PCT refund, seat restored) before slot start - P-CUTOFF.\n\n`version` is the order version the Student confirmed. A repeat with the same key\nreturns the same result; there is never a second refund.",
+        "operationId": "cancel_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Students cancel their own orders"
+          },
+          "404": {
+            "description": "No such order, or not the caller's"
+          },
+          "409": {
+            "description": "The order is READY or terminal, the cut-off has passed, the version is stale (current status, version and refund in the body), or the original request with this key is still in progress"
+          },
+          "422": {
+            "description": "The idempotency key was already used with a different request"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was changed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Order",
         "tags": [
           "ordering"
         ]
