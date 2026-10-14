@@ -29,6 +29,8 @@ export 'models/item_category.dart';
 export 'models/item_create.dart';
 export 'models/item_out.dart';
 export 'models/item_status.dart';
+export 'models/kitchen_action.dart';
+export 'models/kitchen_order_out.dart';
 export 'models/kitchen_queue_out.dart';
 export 'models/login_request.dart';
 export 'models/menu_item_out.dart';
@@ -69,6 +71,7 @@ export 'models/token_pair.dart';
 export 'models/tool_call_out.dart';
 export 'models/totals_order.dart';
 export 'models/transition_out.dart';
+export 'models/transition_request.dart';
 export 'models/user_out.dart';
 export 'models/validation_error.dart';
 // Root client

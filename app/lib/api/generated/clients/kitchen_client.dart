@@ -5,13 +5,28 @@
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
+import '../models/kitchen_order_out.dart';
 import '../models/kitchen_queue_out.dart';
+import '../models/transition_request.dart';
 
 part 'kitchen_client.g.dart';
 
 @RestApi()
 abstract class KitchenClient {
   factory KitchenClient(Dio dio, {String? baseUrl}) = _KitchenClient;
+
+  /// Transition Kitchen Order.
+  ///
+  /// FR-43: Start (T5), Mark Ready (T8), Mark Picked Up (T10) or Mark No-show (T11).
+  ///
+  /// Any other move is refused with 409 and changes nothing (FR-29). A no-show keeps.
+  /// the portions and is not refunded. The order version is bumped, so a Student.
+  /// acting on what they saw before gets 409.
+  @POST('/api/v1/kitchen/orders/{order_id}/transitions')
+  Future<KitchenOrderOut> transitionKitchenOrder({
+    @Path('order_id') required String orderId,
+    @Body() required TransitionRequest body,
+  });
 
   /// Get Kitchen Queue.
   ///
