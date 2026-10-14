@@ -36,8 +36,7 @@ def downgrade() -> None:
     """Downgrade schema."""
     # A proposal ID does not fit back into 20 characters; record such flags as STAFF.
     op.execute(
-        "UPDATE menu_items SET unavailable_source = 'STAFF' "
-        "WHERE length(unavailable_source) > 20"
+        "UPDATE menu_items SET unavailable_source = 'STAFF' WHERE length(unavailable_source) > 20"
     )
     op.alter_column(
         "menu_items",
