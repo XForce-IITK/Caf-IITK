@@ -1,0 +1,1513 @@
+{
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "InventoryOut": {
+        "properties": {
+          "allocated": {
+            "title": "Allocated",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "integer"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "service_date",
+          "total",
+          "allocated",
+          "available"
+        ],
+        "title": "InventoryOut",
+        "type": "object"
+      },
+      "InventorySet": {
+        "additionalProperties": false,
+        "properties": {
+          "total": {
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "title": "InventorySet",
+        "type": "object"
+      },
+      "ItemCategory": {
+        "enum": [
+          "MEAL",
+          "SNACK",
+          "BEVERAGE",
+          "DESSERT"
+        ],
+        "title": "ItemCategory",
+        "type": "string"
+      },
+      "ItemCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ItemCategory"
+          },
+          "description": {
+            "default": "",
+            "maxLength": 300,
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "price_paise": {
+            "maximum": 50000.0,
+            "minimum": 100.0,
+            "title": "Price Paise",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "category",
+          "price_paise"
+        ],
+        "title": "ItemCreate",
+        "type": "object"
+      },
+      "ItemOut": {
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/ItemCategory"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_paise": {
+            "title": "Price Paise",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ItemStatus"
+          },
+          "unavailable": {
+            "title": "Unavailable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "category",
+          "price_paise",
+          "status",
+          "unavailable"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
+      "ItemStatus": {
+        "enum": [
+          "ACTIVE",
+          "REMOVED"
+        ],
+        "title": "ItemStatus",
+        "type": "string"
+      },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "minLength": 1,
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "MenuItemOut": {
+        "properties": {
+          "available_portions": {
+            "title": "Available Portions",
+            "type": "integer"
+          },
+          "category": {
+            "$ref": "#/components/schemas/ItemCategory"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "not_orderable_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotOrderableReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "orderable": {
+            "title": "Orderable",
+            "type": "boolean"
+          },
+          "price_paise": {
+            "title": "Price Paise",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "category",
+          "price_paise",
+          "available_portions",
+          "orderable",
+          "not_orderable_reason"
+        ],
+        "title": "MenuItemOut",
+        "type": "object"
+      },
+      "MenuOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MenuItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_date",
+          "items"
+        ],
+        "title": "MenuOut",
+        "type": "object"
+      },
+      "NotBookableReason": {
+        "enum": [
+          "CLOSED",
+          "FULL"
+        ],
+        "title": "NotBookableReason",
+        "type": "string"
+      },
+      "NotOrderableReason": {
+        "enum": [
+          "REMOVED",
+          "UNAVAILABLE",
+          "SOLD_OUT"
+        ],
+        "title": "NotOrderableReason",
+        "type": "string"
+      },
+      "OrderOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "paid_paise": {
+            "title": "Paid Paise",
+            "type": "integer"
+          },
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "subsidy_applied": {
+            "title": "Subsidy Applied",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "slot_id",
+          "version",
+          "paid_paise",
+          "subsidy_applied",
+          "price",
+          "created_at"
+        ],
+        "title": "OrderOut",
+        "type": "object"
+      },
+      "OrderStatus": {
+        "description": "States of Table 4.6-A in the SRS.",
+        "enum": [
+          "PENDING_PAYMENT",
+          "ACCEPTED",
+          "PREPARING",
+          "READY",
+          "PICKED_UP",
+          "NO_SHOW",
+          "CANCELLED",
+          "PAYMENT_FAILED"
+        ],
+        "title": "OrderStatus",
+        "type": "string"
+      },
+      "PlaceOrderRequest": {
+        "additionalProperties": false,
+        "description": "The cart and slot that were quoted, plus the amount the Student agreed to (FR-26).",
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "quoted_payable_paise": {
+            "minimum": 0.0,
+            "title": "Quoted Payable Paise",
+            "type": "integer"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "lines",
+          "quoted_payable_paise"
+        ],
+        "title": "PlaceOrderRequest",
+        "type": "object"
+      },
+      "QuoteLineIn": {
+        "additionalProperties": false,
+        "properties": {
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "qty": {
+            "minimum": 1.0,
+            "title": "Qty",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "qty"
+        ],
+        "title": "QuoteLineIn",
+        "type": "object"
+      },
+      "QuoteLineOut": {
+        "properties": {
+          "discount_pct": {
+            "title": "Discount Pct",
+            "type": "integer"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "line_base_paise": {
+            "title": "Line Base Paise",
+            "type": "integer"
+          },
+          "line_discount_paise": {
+            "title": "Line Discount Paise",
+            "type": "integer"
+          },
+          "line_total_paise": {
+            "title": "Line Total Paise",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "qty": {
+            "title": "Qty",
+            "type": "integer"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "unit_price_paise": {
+            "title": "Unit Price Paise",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "unit_price_paise",
+          "qty",
+          "line_base_paise",
+          "rule_id",
+          "discount_pct",
+          "line_discount_paise",
+          "line_total_paise"
+        ],
+        "title": "QuoteLineOut",
+        "type": "object"
+      },
+      "QuoteOut": {
+        "description": "The full FR-24 breakdown. Amounts are integer paise.",
+        "properties": {
+          "discounted_subtotal_paise": {
+            "title": "Discounted Subtotal Paise",
+            "type": "integer"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "payable_paise": {
+            "title": "Payable Paise",
+            "type": "integer"
+          },
+          "rounding_adjustment_paise": {
+            "title": "Rounding Adjustment Paise",
+            "type": "integer"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "subsidy_paise": {
+            "title": "Subsidy Paise",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slot_id",
+          "lines",
+          "discounted_subtotal_paise",
+          "subsidy_paise",
+          "rounding_adjustment_paise",
+          "payable_paise"
+        ],
+        "title": "QuoteOut",
+        "type": "object"
+      },
+      "QuoteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/QuoteLineIn"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Lines",
+            "type": "array"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "lines"
+        ],
+        "title": "QuoteRequest",
+        "type": "object"
+      },
+      "RefreshRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "refresh_token": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "RefreshRequest",
+        "type": "object"
+      },
+      "RegisterRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest",
+        "type": "object"
+      },
+      "Role": {
+        "enum": [
+          "STUDENT",
+          "KITCHEN",
+          "ADMIN"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "ServiceDayConfig": {
+        "additionalProperties": false,
+        "description": "FR-17. Times are IST wall-clock; the window must lie within one day.",
+        "properties": {
+          "default_capacity": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Default Capacity",
+            "type": "integer"
+          },
+          "slot_len_min": {
+            "anyOf": [
+              {
+                "maximum": 240.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot Len Min"
+          },
+          "window_end": {
+            "format": "time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "window_start",
+          "window_end",
+          "default_capacity"
+        ],
+        "title": "ServiceDayConfig",
+        "type": "object"
+      },
+      "ServiceDayOut": {
+        "properties": {
+          "default_capacity": {
+            "title": "Default Capacity",
+            "type": "integer"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "slot_len_min": {
+            "title": "Slot Len Min",
+            "type": "integer"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          },
+          "window_end": {
+            "format": "time",
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "format": "time",
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "service_date",
+          "window_start",
+          "window_end",
+          "slot_len_min",
+          "default_capacity",
+          "slots"
+        ],
+        "title": "ServiceDayOut",
+        "type": "object"
+      },
+      "SlotAvailabilityOut": {
+        "properties": {
+          "bookable": {
+            "title": "Bookable",
+            "type": "boolean"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "not_bookable_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotBookableReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "remaining_seats": {
+            "title": "Remaining Seats",
+            "type": "integer"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "starts_at",
+          "ends_at",
+          "remaining_seats",
+          "bookable",
+          "not_bookable_reason"
+        ],
+        "title": "SlotAvailabilityOut",
+        "type": "object"
+      },
+      "SlotListOut": {
+        "properties": {
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotAvailabilityOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "service_date",
+          "slots"
+        ],
+        "title": "SlotListOut",
+        "type": "object"
+      },
+      "SlotOut": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "starts_at",
+          "ends_at",
+          "capacity",
+          "booked"
+        ],
+        "title": "SlotOut",
+        "type": "object"
+      },
+      "TokenPair": {
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "token_type": {
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in",
+          "role"
+        ],
+        "title": "TokenPair",
+        "type": "object"
+      },
+      "UserOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role"
+        ],
+        "title": "UserOut",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Caf@IITK API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/inventory/{service_date}/{item_id}": {
+      "put": {
+        "description": "FR-14 / US-11: set the prepared portions of an item for a service date (0-500).",
+        "operationId": "set_inventory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Service Date",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventorySet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages inventory"
+          },
+          "404": {
+            "description": "No such menu item"
+          },
+          "409": {
+            "description": "Item is not ACTIVE, the service date is not configured, or the total is below the portions already allocated"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Inventory",
+        "tags": [
+          "inventory"
+        ]
+      }
+    },
+    "/api/v1/admin/items": {
+      "post": {
+        "description": "FR-8 / US-06: add a dish; it is ACTIVE immediately.",
+        "operationId": "onboard_item",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator onboards items"
+          },
+          "422": {
+            "description": "Invalid input, or an ACTIVE item already has this name"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Onboard Item",
+        "tags": [
+          "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/service-days/{service_date}": {
+      "put": {
+        "description": "FR-17 / US-14: configure a service date's window and generate its slots.",
+        "operationId": "configure_service_day",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service_date",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Service Date",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceDayConfig"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceDayOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator configures service windows"
+          },
+          "409": {
+            "description": "Orders already reference this day's slots"
+          },
+          "422": {
+            "description": "Invalid window, capacity, or a slot length that does not divide it"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Configure Service Day",
+        "tags": [
+          "slots"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Invalid email or password"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Logout",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Me",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenPair"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Invalid refresh token"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "409": {
+            "description": "Email already registered"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/menu": {
+      "get": {
+        "description": "FR-13 / US-10: the menu for a service date, with what is left of each item.",
+        "operationId": "browse_menu",
+        "parameters": [
+          {
+            "description": "Defaults to the current service date.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Defaults to the current service date.",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MenuOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Browse Menu",
+        "tags": [
+          "catalogue"
+        ]
+      }
+    },
+    "/api/v1/orders": {
+      "post": {
+        "description": "FR-30, FR-33: reserve the portions and a seat, then take payment.\n\n201 with the order in ACCEPTED, or in PAYMENT_FAILED (holds returned) when the\npayment is declined or times out. A repeat with the same key returns the same order.",
+        "operationId": "place_order",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Students place orders"
+          },
+          "404": {
+            "description": "Slot not found"
+          },
+          "409": {
+            "description": "Ordering not open yet, an item or the slot is unavailable (named in the body), the price differs from the quote (fresh quote in the body), or the original request with this key is still in progress"
+          },
+          "422": {
+            "description": "Unknown item, quantity above P-MAX_QTY, or the idempotency key was already used with a different cart"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was reserved"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Place Order",
+        "tags": [
+          "ordering"
+        ]
+      }
+    },
+    "/api/v1/quotes": {
+      "post": {
+        "description": "FR-25: the full FR-24 breakdown for a cart and slot. Reserves nothing.",
+        "operationId": "create_quote",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Students request quotes"
+          },
+          "404": {
+            "description": "Slot not found"
+          },
+          "422": {
+            "description": "Unknown or removed item, or quantity above P-MAX_QTY"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Quote",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/slots": {
+      "get": {
+        "description": "FR-19 / US-16: a service date's pickup slots with their remaining seats.",
+        "operationId": "browse_slots",
+        "parameters": [
+          {
+            "description": "Defaults to the current service date.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Defaults to the current service date.",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Browse Slots",
+        "tags": [
+          "slots"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "ops"
+        ]
+      }
+    }
+  }
+}

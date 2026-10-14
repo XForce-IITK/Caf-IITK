@@ -12,6 +12,8 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - build/**
+    # Generated from the OpenAPI schema by tool/generate_api.sh.
+    - lib/api/generated/**
     - web/**
 
 linter:

@@ -80,6 +80,23 @@ flutter analyze && flutter test
 flutter run -d chrome
 ```
 
+### API client
+
+`app/lib/api/generated/` is generated from caf-api's OpenAPI schema
+(`app/openapi.json`) and is never edited by hand. After any change to an
+endpoint or a request/response schema, regenerate it and commit the result in
+the same PR; CI regenerates it and fails if the committed files differ (NFR-39).
+
+```sh
+app/tool/generate_api.sh      # needs the backend venv and Flutter
+```
+
+Use the client through `apiProvider` in `app/lib/api/api.dart`, for example
+`ref.read(apiProvider).catalogue.browseMenu(date: serviceDate(DateTime.now()))`.
+Methods are named after the backend endpoint functions, so keep those names
+unique. Pass service dates through `serviceDate(...)`: the backend rejects a
+date that carries a time of day.
+
 ## Workflow
 
 Branch `CAFIITK-<issue>-<slug>` off `develop`; start every commit message and
