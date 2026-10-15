@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -13,16 +14,34 @@ from app.modules.ordering.idempotency import (
     IdempotencyKeyReusedError,
     RequestInProgressError,
 )
+from app.modules.ordering.modification import (
+    ModificationPaymentError,
+    ModifyService,
+    NothingToChangeError,
+    OtherServiceDateError,
+)
 from app.modules.ordering.retry import TransientFailureError
-from app.modules.ordering.schemas import OrderOut, PlaceOrderRequest
+from app.modules.ordering.schemas import (
+    CancelledOrderOut,
+    CancelOrderRequest,
+    ModificationQuoteOut,
+    ModifiedOrderOut,
+    ModifyOrderRequest,
+    OrderDetailOut,
+    OrderOut,
+    PlaceOrderRequest,
+)
 from app.modules.ordering.service import (
     MenuNotOpenError,
+    OrderConflictError,
     OrderService,
     PriceChangedError,
     UnavailableError,
 )
+from app.modules.ordering.tracking import OrderNotFoundError, OrderTrackingService
 from app.modules.payments.gateway import PaymentGateway
 from app.modules.payments.mockpay_gateway import get_payment_gateway
+from app.modules.pricing.schemas import QuoteRequest
 from app.modules.pricing.service import QuantityLimitError, SlotNotFoundError, UnknownItemsError
 
 router = APIRouter(tags=["ordering"])
@@ -96,6 +115,222 @@ def place_order(
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             {"message": "Price changed", "quote": exc.quote.model_dump(mode="json")},
+        ) from None
+    except TransientFailureError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Busy, try again", headers={"Retry-After": "1"}
+        ) from None
+
+
+@router.get(
+    "/orders/{order_id}",
+    responses={
+        403: {"description": "Only Students track orders"},
+        404: {"description": "No such order, or it belongs to another Student"},
+    },
+)
+def get_order(
+    order_id: uuid.UUID,
+    user: Annotated[User, Depends(require_permission(Permission.VIEW_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+) -> OrderDetailOut:
+    """FR-40: the order's current status and every transition so far, oldest first.
+
+    The client polls this every P-POLL while the order is not finished. Another
+    Student's order answers 404 and is logged as a security event (FR-7).
+    """
+    try:
+        return OrderTrackingService(session).get_for_student(user, order_id)
+    except OrderNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
+
+
+@router.post(
+    "/orders/{order_id}/cancel",
+    responses={
+        403: {"description": "Only Students cancel their own orders"},
+        404: {"description": "No such order, or not the caller's"},
+        409: {
+            "description": "The order is READY or terminal, the cut-off has passed, the "
+            "version is stale (current status, version and refund in the body), or the "
+            "original request with this key is still in progress"
+        },
+        422: {"description": "The idempotency key was already used with a different request"},
+        503: {"description": "Could not complete after retries; nothing was changed"},
+    },
+)
+def cancel_order(
+    order_id: uuid.UUID,
+    body: CancelOrderRequest,
+    idempotency_key: IdempotencyKeyHeader,
+    user: Annotated[User, Depends(require_permission(Permission.MANAGE_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+    gateway: Annotated[PaymentGateway, Depends(get_payment_gateway)],
+) -> CancelledOrderOut:
+    """FR-37, FR-39: cancel from ACCEPTED (100 % refund, seat and portions restored) or
+    PREPARING (P-LATE_REFUND_PCT refund, seat restored) before slot start - P-CUTOFF.
+
+    `version` is the order version the Student confirmed. A repeat with the same key
+    returns the same result; there is never a second refund.
+    """
+    try:
+        return OrderService(session, gateway).cancel(
+            user, order_id, body, idempotency_key, clock.now()
+        )
+    except OrderNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
+    except IdempotencyKeyReusedError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Idempotency key already used with a different request",
+        ) from None
+    except RequestInProgressError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The original request is still in progress"
+        ) from None
+    except OrderConflictError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": exc.reason,
+                "status": exc.status.value,
+                "version": exc.version,
+                "refund_paise": exc.refund_paise,
+            },
+        ) from None
+    except TransientFailureError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Busy, try again", headers={"Retry-After": "1"}
+        ) from None
+
+
+@router.post(
+    "/orders/{order_id}/quote",
+    responses={
+        403: {"description": "Only Students modify their own orders"},
+        404: {"description": "No such order or slot, or the order is not the caller's"},
+        422: {"description": "Unknown item, or quantity above P-MAX_QTY"},
+    },
+)
+def quote_order_modification(
+    order_id: uuid.UUID,
+    body: QuoteRequest,
+    user: Annotated[User, Depends(require_permission(Permission.MANAGE_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+    gateway: Annotated[PaymentGateway, Depends(get_payment_gateway)],
+) -> ModificationQuoteOut:
+    """UC-12 step 3: what the order would cost with this cart and slot, and the
+    difference from what was paid. Read-only; nothing is reserved."""
+    try:
+        return ModifyService(session, gateway).quote(user, order_id, body)
+    except OrderNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
+    except SlotNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Slot not found") from None
+    except UnknownItemsError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"message": "Unknown items", "item_ids": [str(i) for i in exc.item_ids]},
+        ) from None
+    except QuantityLimitError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+
+
+@router.patch(
+    "/orders/{order_id}",
+    responses={
+        402: {
+            "description": "The price difference was declined or timed out; the order is "
+            "exactly as before"
+        },
+        403: {"description": "Only Students modify their own orders"},
+        404: {"description": "No such order or slot, or the order is not the caller's"},
+        409: {
+            "description": "The order is not ACCEPTED, the cut-off has passed, the version is "
+            "stale, an item or the slot is unavailable (named in the body), the price differs "
+            "from the quote (fresh quote in the body), the order changed while the difference "
+            "was being charged, or the original request with this key is still in progress"
+        },
+        422: {
+            "description": "Unknown item, quantity above P-MAX_QTY, a slot on another day, "
+            "nothing to change, or the idempotency key was already used with a different request"
+        },
+        503: {"description": "Could not complete after retries; nothing was changed"},
+    },
+)
+def modify_order(
+    order_id: uuid.UUID,
+    body: ModifyOrderRequest,
+    idempotency_key: IdempotencyKeyHeader,
+    user: Annotated[User, Depends(require_permission(Permission.MANAGE_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+    gateway: Annotated[PaymentGateway, Depends(get_payment_gateway)],
+) -> ModifiedOrderOut:
+    """FR-35, FR-36: replace an ACCEPTED order's items and/or slot before slot start -
+    P-CUTOFF, atomically. The order is re-priced as snapshot v(n+1); a higher price is
+    charged for the difference, a lower one refunded exactly once (FR-39).
+
+    `lines` is the complete new cart. A repeat with the same key returns the same result.
+    """
+    try:
+        return ModifyService(session, gateway).modify(
+            user, order_id, body, idempotency_key, clock.now()
+        )
+    except (OrderNotFoundError, SlotNotFoundError) as exc:
+        what = "Slot" if isinstance(exc, SlotNotFoundError) else "Order"
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"{what} not found") from None
+    except UnknownItemsError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"message": "Unknown items", "item_ids": [str(i) for i in exc.item_ids]},
+        ) from None
+    except QuantityLimitError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    except OtherServiceDateError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "The new slot must be on the same day"
+        ) from None
+    except NothingToChangeError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "The order already has these items and slot"
+        ) from None
+    except IdempotencyKeyReusedError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Idempotency key already used with a different request",
+        ) from None
+    except RequestInProgressError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The original request is still in progress"
+        ) from None
+    except OrderConflictError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {"message": exc.reason, "status": exc.status.value, "version": exc.version},
+        ) from None
+    except UnavailableError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": "Items or slot unavailable",
+                "item_ids": [str(i) for i in exc.item_ids],
+                "slot_id": str(exc.slot_id) if exc.slot_id else None,
+            },
+        ) from None
+    except PriceChangedError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {"message": "Price changed", "quote": exc.quote.model_dump(mode="json")},
+        ) from None
+    except ModificationPaymentError as exc:
+        if exc.outcome == "SUPERSEDED":
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "The order changed while the difference was being charged; nothing was kept",
+            ) from None
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            {"message": str(exc), "outcome": exc.outcome},
         ) from None
     except TransientFailureError:
         raise HTTPException(

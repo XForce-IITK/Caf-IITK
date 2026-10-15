@@ -1,12 +1,14 @@
-# Local development stack (NFR-40): PostgreSQL 16, caf-api and mockpay.
+# Local development stack (NFR-40): PostgreSQL 16, caf-api, caf-worker and mockpay.
 # Usage: cp .env.example .env && docker compose up --build
-# caf-worker joins under CAFIITK-174.
 
 x-backend-env: &backend-env
   CAF_ENV: ${CAF_ENV:-development}
   CAF_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-caf}:${POSTGRES_PASSWORD:-caf}@db:5432/${POSTGRES_DB:-caf}
   CAF_JWT_SECRET: ${CAF_JWT_SECRET:?set CAF_JWT_SECRET in .env}
   CAF_MOCKPAY_URL: http://mockpay:8001
+  CAF_CORS_ORIGINS: ${CAF_CORS_ORIGINS:-[]}
+  CAF_LLM_API_KEY: ${CAF_LLM_API_KEY:-}
+  CAF_LLM_MODEL: ${CAF_LLM_MODEL:-gpt-4o-mini}
   CAF_SEED_ADMIN_EMAIL: ${CAF_SEED_ADMIN_EMAIL:-}
   CAF_SEED_ADMIN_PASSWORD: ${CAF_SEED_ADMIN_PASSWORD:-}
   CAF_SEED_KITCHEN_EMAIL: ${CAF_SEED_KITCHEN_EMAIL:-}
@@ -43,6 +45,20 @@ services:
     environment: *backend-env
     ports:
       - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mockpay:
+        condition: service_started
+
+  # Scheduled jobs and agent runs (ADR-07). Only the instance holding the advisory
+  # lock runs jobs, so `docker compose up --scale worker=2` is safe; a worker that
+  # loses its lock exits and is restarted as a follower.
+  worker:
+    build: ./backend
+    environment: *backend-env
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
     depends_on:
       migrate:
         condition: service_completed_successfully

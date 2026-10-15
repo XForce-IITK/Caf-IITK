@@ -1,14 +1,22 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.capacity import DailyInventory, Slot
 from app.models.catalogue import MenuItem
+from app.models.enums import OrderStatus, PaymentCause, PaymentKind, PaymentStatus
 from app.models.identity import User
-from app.models.ordering import Order, OrderLine, Payment, PriceSnapshot
+from app.models.ordering import (
+    Order,
+    OrderLine,
+    OrderModification,
+    OrderTransition,
+    Payment,
+    PriceSnapshot,
+)
 from app.models.platform import Setting
 
 
@@ -85,6 +93,32 @@ class OrderRepository:
             select(Order).where(Order.id == order_id).execution_options(populate_existing=True)
         ).one()
 
+    def accepted_orders_starting_by(self, cutoff: datetime) -> list[uuid.UUID]:
+        """ACCEPTED orders whose slot starts at or before `cutoff`, in lock order (NFR-4)."""
+        return list(
+            self.session.scalars(
+                select(Order.id)
+                .join(Slot, Slot.id == Order.slot_id)
+                .where(Order.status == OrderStatus.ACCEPTED, Slot.starts_at <= cutoff)
+                .order_by(Order.id)
+            )
+        )
+
+    def find_order(self, order_id: uuid.UUID) -> Order | None:
+        return self.session.scalars(
+            select(Order).where(Order.id == order_id).execution_options(populate_existing=True)
+        ).one_or_none()
+
+    def get_transitions(self, order_id: uuid.UUID) -> list[OrderTransition]:
+        """Oldest first; the id breaks ties between changes in one transaction."""
+        return list(
+            self.session.scalars(
+                select(OrderTransition)
+                .where(OrderTransition.order_id == order_id)
+                .order_by(OrderTransition.at, OrderTransition.id)
+            )
+        )
+
     def get_lines(self, order_id: uuid.UUID) -> list[OrderLine]:
         return list(self.session.scalars(select(OrderLine).where(OrderLine.order_id == order_id)))
 
@@ -94,6 +128,62 @@ class OrderRepository:
             .where(Payment.id == payment_id)
             .execution_options(populate_existing=True)
         ).one()
+
+    def get_charges(self, order_id: uuid.UUID) -> list[tuple[uuid.UUID, int]]:
+        """Approved authorisations (placement and price rises), oldest first."""
+        rows = self.session.execute(
+            select(Payment.id, Payment.amount_paise)
+            .where(
+                Payment.order_id == order_id,
+                Payment.kind == PaymentKind.AUTH,
+                Payment.status == PaymentStatus.SUCCEEDED,
+            )
+            .order_by(Payment.created_at, Payment.id)
+        )
+        return [(payment_id, amount) for payment_id, amount in rows]
+
+    def get_refunds(self, order_id: uuid.UUID) -> list[tuple[uuid.UUID, int]]:
+        """Every refund record of the order, in the order they were recorded."""
+        rows = self.session.execute(
+            select(Payment.id, Payment.amount_paise)
+            .where(Payment.order_id == order_id, Payment.kind == PaymentKind.REFUND)
+            .order_by(Payment.created_at, Payment.id)
+        )
+        return [(payment_id, amount) for payment_id, amount in rows]
+
+    def get_modification(self, modification_id: uuid.UUID) -> OrderModification:
+        return self.session.scalars(
+            select(OrderModification)
+            .where(OrderModification.id == modification_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ).one()
+
+    def find_modify_refund(self, modification_id: uuid.UUID) -> Payment | None:
+        """At most one exists: uq_payments_modify_refund (FR-39)."""
+        return self.session.scalars(
+            select(Payment).where(
+                Payment.modification_id == modification_id,
+                Payment.kind == PaymentKind.REFUND,
+                Payment.cause == PaymentCause.MODIFY,
+            )
+        ).one_or_none()
+
+    def replace_lines(self, order_id: uuid.UUID, lines: dict[uuid.UUID, int]) -> None:
+        self.session.execute(delete(OrderLine).where(OrderLine.order_id == order_id))
+        self.add(*(OrderLine(order_id=order_id, item_id=i, qty=q) for i, q in lines.items()))
+
+    def find_cancel_refund(self, order_id: uuid.UUID) -> Payment | None:
+        """At most one exists: uq_payments_cancel_refund (FR-39)."""
+        return self.session.scalars(
+            select(Payment)
+            .where(
+                Payment.order_id == order_id,
+                Payment.kind == PaymentKind.REFUND,
+                Payment.cause == PaymentCause.CANCEL,
+            )
+            .execution_options(populate_existing=True)
+        ).one_or_none()
 
     def latest_snapshot(self, order_id: uuid.UUID) -> PriceSnapshot:
         return self.session.scalars(

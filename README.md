@@ -1,13 +1,13 @@
 # Caf@IITK
 
 Campus cafeteria pre-order and pickup-slot platform (CS455, IIT Kanpur, Team XForce).
-Requirements and design: `Documentation/` (SRS v2.0 and SADD).
+Requirements and design: `Deliverables/` (SRS v2.0 and SADD).
 
 | Path | What |
 |---|---|
-| `backend/` | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 16. One codebase for `caf-api` and `mockpay` (and later `caf-worker`). |
+| `backend/` | Python 3.12 · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 16. One codebase for `caf-api`, `caf-worker` and `mockpay`. |
 | `app/` | Flutter Web client (Riverpod, GoRouter, Dio). |
-| `docker-compose.yml` | Local stack: PostgreSQL 16, migrations, `caf-api` on :8000, `mockpay` on :8001. |
+| `docker-compose.yml` | Local stack: PostgreSQL 16, migrations, `caf-api` on :8000, `caf-worker`, `mockpay` on :8001. |
 
 ## Prerequisites
 
@@ -55,6 +55,15 @@ change needs a new column or table, add a new migration on top of the latest
 one (`alembic revision --autogenerate -m "..."`) and rebase on `develop` before
 merging so the migration history stays linear.
 
+### Scheduled jobs (caf-worker)
+
+Time-based work (hold sweeper, auto-prep, proposal expiry, scheduled agent runs)
+runs in `caf-worker` (`python -m app.worker`), never in the API. Only the worker
+holding a PostgreSQL advisory lock runs jobs, so starting a second worker is
+safe: it waits and takes over if the leader dies (SADD ADR-07). To add a job,
+append a `Job` to `JOBS` in `app/worker/jobs.py`; it opens its own session and
+must be idempotent.
+
 ### Payments
 
 Services call the payment provider only through `PaymentGateway`
@@ -77,8 +86,59 @@ curl -X PUT localhost:8001/_control/outcome -H 'content-type: application/json' 
 cd app
 flutter pub get
 flutter analyze && flutter test
-flutter run -d chrome
+flutter run -d chrome          # talks to caf-api on http://localhost:8000
 ```
+
+Point the client at another API with
+`--dart-define=API_BASE_URL=https://...`. In development caf-api accepts
+browser calls from any localhost port; in production set `CAF_CORS_ORIGINS` to
+the client's origin (NFR-27).
+
+### Login, routing and networking
+
+- `lib/auth/session.dart` holds the session (`sessionProvider`). Tokens are kept
+  in memory only, so reloading the page logs the user out.
+- `lib/router.dart` sends a logged-in user to exactly one dashboard by role
+  (`/student`, `/kitchen`, `/admin`) and everyone else to `/login` (FR-5). Add
+  a role's screens as child routes under its dashboard path.
+- Every call made through `apiProvider` gets the access token (refreshed once
+  on a 401) and a fresh `X-Request-ID`.
+- For create, modify and cancel, make one key with `newIdempotencyKey()` when
+  the user confirms and pass it to the call. Such requests are retried up to 3
+  times with back-off on a network failure or a 502/503/504, reusing the key
+  (NFR-18).
+- Show failures with `describeApiError(error)` from `lib/api/errors.dart`.
+
+### Student flow
+
+`lib/student/` is the Student dashboard: menu with portions left, slot picker
+with seats left, the full price breakdown before confirming (NFR-32), and
+placing the order. `student_state.dart` holds the cart and the checkout steps;
+a new idempotency key is made for each priced quote and reused if that
+confirmation is repeated. `order_tracking.dart` shows a placed order's status
+and history, refreshed every P-POLL (10 s) while the order is on screen and not
+finished. `cancel_order.dart` lets the Student cancel an accepted or
+preparing order after a confirmation that says what is refunded, and
+`modify_order.dart` lets the Student change the items or slot of an accepted
+order: the draft starts from what the order holds, is priced through
+`POST /orders/{id}/quote`, and is applied with `PATCH /orders/{id}`.
+
+### API client
+
+`app/lib/api/generated/` is generated from caf-api's OpenAPI schema
+(`app/openapi.json`) and is never edited by hand. After any change to an
+endpoint or a request/response schema, regenerate it and commit the result in
+the same PR; CI regenerates it and fails if the committed files differ (NFR-39).
+
+```sh
+app/tool/generate_api.sh      # needs the backend venv and Flutter
+```
+
+Use the client through `apiProvider` in `app/lib/api/api.dart`, for example
+`ref.read(apiProvider).catalogue.browseMenu(date: serviceDate(DateTime.now()))`.
+Methods are named after the backend endpoint functions, so keep those names
+unique. Pass service dates through `serviceDate(...)`: the backend rejects a
+date that carries a time of day.
 
 ## Workflow
 

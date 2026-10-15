@@ -1,8 +1,8 @@
 """US-13 (FR-16) acceptance tests TC-US13-AC1..AC4: portions follow the order lifecycle.
 
-AC3 and AC4 cancel an order, which arrives in Sprint 2; they are skipped here so
-the gap stays visible in every test report. The rule they test is already fixed
-in the state machine (see test_order_state_machine.py).
+AC3 and AC4 cancel through POST /orders/{id}/cancel (US-28). The kitchen "start"
+endpoint (US-34) is not merged yet, so AC4 moves the order to PREPARING through
+the order state machine, as the kitchen will.
 """
 
 import uuid
@@ -23,7 +23,8 @@ from app.models.capacity import DailyInventory, ServiceDay, Slot
 from app.models.catalogue import MenuItem
 from app.models.enums import ItemCategory, OrderStatus, Role
 from app.models.identity import User
-from app.models.ordering import Order
+from app.models.ordering import Order, OrderTransition
+from app.modules.ordering.state_machine import transition
 from app.modules.payments.fake import FakePaymentGateway
 from app.modules.payments.gateway import (
     AuthOutcome,
@@ -157,13 +158,55 @@ def test_tc_us13_ac2_declined_payment_returns_the_portions(
     assert _available_in_db(engine) == 10
 
 
-@pytest.mark.skip(reason="needs the cancel endpoint, US-28 (Sprint 2)")
-def test_tc_us13_ac3_cancelling_an_accepted_order_restores_the_portions() -> None:
+def _cancel(api: TestClient, thali: dict[str, Any], order_id: str, version: int) -> None:
+    response = api.post(
+        f"/api/v1/orders/{order_id}/cancel",
+        json={"version": version},
+        headers=thali["auth"] | {"Idempotency-Key": uuid.uuid4().hex},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "CANCELLED"
+
+
+def _start_preparing(engine: Engine, order_id: str) -> int:
+    """T5 as the kitchen will apply it; returns the order's new version."""
+    with Session(engine) as session, session.begin():
+        order = session.get_one(Order, uuid.UUID(order_id), with_for_update=True)
+        transition(order.status, OrderStatus.PREPARING)
+        session.add(
+            OrderTransition(
+                order_id=order.id, from_status=order.status, to_status=OrderStatus.PREPARING
+            )
+        )
+        order.status = OrderStatus.PREPARING
+        order.version += 1
+        return order.version
+
+
+def test_tc_us13_ac3_cancelling_an_accepted_order_restores_the_portions(
+    api: TestClient, engine: Engine, thali: dict[str, Any]
+) -> None:
     """T6: ACCEPTED -> CANCELLED releases the portions."""
+    _use_gateway(api, FakePaymentGateway())
+    order = _order_two(api, thali)
+    assert _available_on_menu(api, thali) == 8
+
+    _cancel(api, thali, order["id"], order["version"])
+
+    assert _available_on_menu(api, thali) == 10
+    assert _available_in_db(engine) == 10
 
 
-@pytest.mark.skip(
-    reason="needs the cancel endpoint, US-28, and the kitchen start, US-34 (Sprint 2)"
-)
-def test_tc_us13_ac4_cancelling_a_preparing_order_does_not_restore_the_portions() -> None:
+def test_tc_us13_ac4_cancelling_a_preparing_order_does_not_restore_the_portions(
+    api: TestClient, engine: Engine, thali: dict[str, Any]
+) -> None:
     """T7: PREPARING -> CANCELLED releases the seat but not the portions."""
+    _use_gateway(api, FakePaymentGateway())
+    order = _order_two(api, thali)
+    version = _start_preparing(engine, order["id"])
+
+    _cancel(api, thali, order["id"], version)
+
+    # The two Thalis are already being cooked, so they stay allocated.
+    assert _available_on_menu(api, thali) == 8
+    assert _available_in_db(engine) == 8
