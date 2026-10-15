@@ -1,7 +1,7 @@
 # Caf@IITK
 
 Campus cafeteria pre-order and pickup-slot platform (CS455, IIT Kanpur, Team XForce).
-Requirements and design: `Documentation/` (SRS v2.0 and SADD).
+Requirements and design: `Deliverables/` (SRS v2.0 and SADD).
 
 | Path | What |
 |---|---|

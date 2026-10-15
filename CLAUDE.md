@@ -4,7 +4,7 @@ Campus cafeteria pre-order and pickup-slot platform. CS455 Software Engineering 
 
 ## Current state
 
-Sprint 1 is merged; Sprint 2 (ends 14 Oct 2026) is in progress. See `README.md` for commands. `Documentation/` holds the proposal, SRS (v2.0), SADD, project management report and AI Engineering Log. The SRS and SADD are the source of truth for behaviour and design; read the relevant section before implementing anything.
+Sprint 1 is merged; Sprint 2 (ends 14 Oct 2026) is in progress. See `README.md` for commands. `Deliverables/` holds the proposal, SRS (v2.0), SADD, project management report and AI Engineering Log. The SRS and SADD are the source of truth for behaviour and design; read the relevant section before implementing anything.
 
 Backend (`backend/`): module packages under `app/modules/` (`identity`, `catalogue`, `inventory`, `slots`, `pricing`, `ordering`, `payments`, `audit`, `kitchen`, `proposals`, `agent`), Alembic migrations from `0001` (all core tables from SADD Figure 2.5) onwards, `mockpay` as a separate service, and `caf-worker` (`app/worker/`, leader-locked; modules register their jobs there). Working endpoints: register, login, refresh, logout, `me`; onboard an item, flag it unavailable, browse the menu; set daily inventory; configure a service day and browse slots; price quote; place, track, cancel and modify an order (with idempotency keys); the kitchen queue; agent runs, and approving or rejecting their proposals. Not built yet: kitchen transitions and auto-prep, the hold sweeper, audit search.
 
@@ -36,12 +36,12 @@ The `.docx` files are binary. To read one, extract the text from `word/document.
 - Every commit message and PR title starts with the Jira key, e.g. `CAFIITK-42: lock inventory and slot rows before decrement`.
 - Significant changes merge through a PR with a description, test evidence and the Jira link, reviewed by someone other than the author.
 - Each member commits from their own GitHub account. Never create artificial commits, backdated Jira issues or fabricated test results; the brief gives these no credit.
-- Maintain `Documentation/AI-Engineering-Log.md` as work proceeds (see below).
+- Maintain `Deliverables/AI-Engineering-Log.md` as work proceeds (see below).
 - After changing an endpoint or a request/response schema, run `app/tool/generate_api.sh` and commit the result in the same PR; CI fails if the generated client is stale (NFR-39). Never edit `app/lib/api/generated/` by hand. Endpoint function names become client method names, so keep them unique.
 
 ## AI Engineering Log
 
-Claude keeps track of major AI-assisted work during a session and proposes log entries for `Documentation/AI-Engineering-Log.md`, but asks before writing anything to the file.
+Claude keeps track of major AI-assisted work during a session and proposes log entries for `Deliverables/AI-Engineering-Log.md`, but asks before writing anything to the file.
 
 - Log only major AI-assisted work: a feature, a design decision, a significant bug, a document or review. Skip routine questions, small edits and retries.
 - Describe each entry at a high level: what was asked for, what the AI produced, how the team evaluated it, what was changed, and whether it was accepted, modified or rejected and why.
