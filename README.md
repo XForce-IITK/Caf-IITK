@@ -122,6 +122,9 @@ preparing order after a confirmation that says what is refunded, and
 `modify_order.dart` lets the Student change the items or slot of an accepted
 order: the draft starts from what the order holds, is priced through
 `POST /orders/{id}/quote`, and is applied with `PATCH /orders/{id}`.
+`order_history.dart` is "My orders" (`/student/orders`): the Student's orders,
+newest first, and for each one its status history, every price snapshot
+version as it was shown, and every refund (FR-28).
 
 ### API client
 
