@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from app.core.text import NoNul
 from app.models.enums import OrderStatus, PaymentCause, PaymentStatus, Role
 from app.models.ordering import Order, OrderTransition, Payment, PriceSnapshot
 from app.modules.pricing.schemas import QuoteOut, QuoteRequest
@@ -127,7 +128,7 @@ class CancelOrderRequest(BaseModel):
 class AdminCancelOrderRequest(CancelOrderRequest):
     """FR-38: the Administrator must say why; whitespace alone is no reason."""
 
-    reason: Annotated[str, Field(min_length=1, max_length=500, pattern=r"\S")]
+    reason: Annotated[str, Field(min_length=1, max_length=500, pattern=r"\S"), NoNul]
 
 
 class RefundOut(BaseModel):
