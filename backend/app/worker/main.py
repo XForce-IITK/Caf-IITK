@@ -14,6 +14,7 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import Engine
+from sqlalchemy.exc import DBAPIError
 
 from app.worker.jobs import JOBS, Job, all_jobs
 from app.worker.leader import LeaderLock
@@ -82,11 +83,19 @@ class Worker:
             self._scheduler = None
         self.lock.release()
 
+    def _try_acquire(self) -> bool:
+        try:
+            return self.lock.try_acquire()
+        except DBAPIError:
+            # NFR-16: the database is down; keep waiting rather than exit.
+            log.warning("database unavailable; retrying in %.0f s", self._retry_s)
+            return False
+
     def run(self, stop: threading.Event) -> None:
         """Wait to become leader, then run jobs until `stop` is set or leadership is lost."""
         try:
             while not stop.is_set():
-                if self.lock.try_acquire():
+                if self._try_acquire():
                     self.start()
                     break
                 stop.wait(self._retry_s)

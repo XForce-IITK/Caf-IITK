@@ -6,6 +6,7 @@ from fastapi.routing import APIRoute
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.errors import add_error_handlers
 
 LOCAL_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
         expose_headers=["Retry-After"],
     )
+    add_error_handlers(app)
     app.include_router(api_router)
 
     @app.get("/health", tags=["ops"])
