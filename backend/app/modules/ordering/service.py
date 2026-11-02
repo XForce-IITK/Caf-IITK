@@ -66,6 +66,14 @@ class MenuNotOpenError(Exception):
         self.opens_at = opens_at
 
 
+class ActiveOrderLimitError(Exception):
+    """FR-31: the Student already holds P-MAX_ACTIVE unfinished orders on that date."""
+
+    def __init__(self, max_active: int) -> None:
+        super().__init__(f"you may hold at most {max_active} active orders per service date")
+        self.max_active = max_active
+
+
 class UnavailableError(Exception):
     """Items that are not orderable (FR-12) and/or a slot that is not bookable (FR-19)."""
 
@@ -168,7 +176,9 @@ class OrderService:
         if replay is not None:
             return self._view(uuid.UUID(replay.response["order_id"]))
 
-        settings = self.repo.get_settings("P-MENU_OPEN", "P-BOOK_CLOSE_MIN", "P-MAX_QTY")
+        settings = self.repo.get_settings(
+            "P-MENU_OPEN", "P-BOOK_CLOSE_MIN", "P-MAX_QTY", "P-MAX_ACTIVE"
+        )
         max_qty = int(settings["P-MAX_QTY"])
         if any(line.qty > max_qty for line in request.lines):
             raise QuantityLimitError(max_qty)
@@ -189,6 +199,10 @@ class OrderService:
             raise UnknownItemsError(unknown)
 
         self.repo.lock_student(student.id)
+        # Counted under the Student's lock, so two placements at once cannot both pass.
+        max_active = int(settings["P-MAX_ACTIVE"])
+        if self.repo.count_active_orders(student.id, slot.service_date) >= max_active:
+            raise ActiveOrderLimitError(max_active)
         stock = self.repo.lock_inventory(item_ids, slot.service_date)
         slot = self.repo.lock_slot(slot.id)
 

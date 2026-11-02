@@ -32,6 +32,7 @@ from app.modules.ordering.schemas import (
     PlaceOrderRequest,
 )
 from app.modules.ordering.service import (
+    ActiveOrderLimitError,
     MenuNotOpenError,
     OrderConflictError,
     OrderService,
@@ -59,8 +60,9 @@ router = APIRouter(tags=["ordering"])
             "original request with this key is still in progress"
         },
         422: {
-            "description": "Unknown item, quantity above P-MAX_QTY, or the idempotency key was "
-            "already used with a different cart"
+            "description": "Unknown item, quantity above P-MAX_QTY, already P-MAX_ACTIVE "
+            "unfinished orders on that date, or the idempotency key was already used with a "
+            "different cart"
         },
         503: {"description": "Could not complete after retries; nothing was reserved"},
     },
@@ -86,7 +88,7 @@ def place_order(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             {"message": "Unknown items", "item_ids": [str(i) for i in exc.item_ids]},
         ) from None
-    except QuantityLimitError as exc:
+    except (QuantityLimitError, ActiveOrderLimitError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except IdempotencyKeyReusedError:
         raise HTTPException(
