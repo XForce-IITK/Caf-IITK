@@ -25,6 +25,11 @@ from app.models.ordering import (
 )
 from app.models.platform import Setting
 
+# Not yet finished: these count towards P-MAX_ACTIVE (FR-31).
+ACTIVE_STATUSES = frozenset(
+    {OrderStatus.PENDING_PAYMENT, OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.READY}
+)
+
 
 class OrderRepository:
     """Row locks here follow the canonical order (NFR-4, ADR-02):
@@ -62,6 +67,22 @@ class OrderRepository:
         """
         self.session.execute(
             select(User.id).where(User.id == student_id).with_for_update(key_share=True)
+        )
+
+    def count_active_orders(self, student_id: uuid.UUID, service_date: date) -> int:
+        """The Student's non-terminal orders for slots on `service_date` (FR-31)."""
+        return (
+            self.session.scalar(
+                select(func.count())
+                .select_from(Order)
+                .join(Slot, Slot.id == Order.slot_id)
+                .where(
+                    Order.student_id == student_id,
+                    Slot.service_date == service_date,
+                    Order.status.in_(ACTIVE_STATUSES),
+                )
+            )
+            or 0
         )
 
     def lock_inventory(
