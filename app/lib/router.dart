@@ -7,6 +7,7 @@ import 'auth/login_screen.dart';
 import 'auth/register_screen.dart';
 import 'auth/session.dart';
 import 'dashboards/dashboards.dart';
+import 'student/order_history.dart';
 import 'student/student_dashboard.dart';
 
 const loginPath = '/login';
@@ -50,7 +51,23 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/', redirect: (context, state) => loginPath),
       GoRoute(path: loginPath, builder: (_, _) => const LoginScreen()),
       GoRoute(path: registerPath, builder: (_, _) => const RegisterScreen()),
-      GoRoute(path: '/student', builder: (_, _) => const StudentDashboard()),
+      GoRoute(
+        path: '/student',
+        builder: (_, _) => const StudentDashboard(),
+        routes: [
+          GoRoute(
+            path: 'orders',
+            builder: (_, _) => const MyOrdersScreen(),
+            routes: [
+              GoRoute(
+                path: ':orderId',
+                builder: (_, state) =>
+                    OrderHistoryScreen(state.pathParameters['orderId']!),
+              ),
+            ],
+          ),
+        ],
+      ),
       GoRoute(path: '/kitchen', builder: (_, _) => const KitchenDashboard()),
       GoRoute(path: '/admin', builder: (_, _) => const AdminDashboard()),
     ],
