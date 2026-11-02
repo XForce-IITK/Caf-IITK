@@ -30,6 +30,7 @@ from app.modules.ordering.refunds import RefundPart, refund_parts
 from app.modules.ordering.repository import OrderRepository
 from app.modules.ordering.retry import run_in_transaction
 from app.modules.ordering.schemas import (
+    AdminCancelOrderRequest,
     CancelledOrderOut,
     CancelOrderRequest,
     OrderOut,
@@ -114,6 +115,8 @@ class _PendingRefund:
 
 # T6 and T7 are the Student's cancels (FR-37); READY and terminal states are refused.
 _STUDENT_CANCELLABLE = frozenset({OrderStatus.ACCEPTED, OrderStatus.PREPARING})
+# The Administrator may also cancel a READY order (T9, FR-38).
+_ADMIN_CANCELLABLE = _STUDENT_CANCELLABLE | {OrderStatus.READY}
 
 
 def cancel_refund_paise(status: OrderStatus, paid_paise: int, late_refund_pct: int) -> int:
@@ -374,6 +377,60 @@ class OrderService:
         )
         pending = self._record_refund(refund, student)
         self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
+        return pending
+
+    def admin_cancel(
+        self,
+        admin: User,
+        order_id: uuid.UUID,
+        request: AdminCancelOrderRequest,
+        idempotency_key: str,
+    ) -> CancelledOrderOut:
+        """UC-20 (FR-38): T6, T7 or T9 with the reason and a 100 % refund, sent after commit.
+
+        No ownership check and no cut-off: the Administrator resolves problems at the
+        counter, up to the moment the order is picked up.
+        """
+        cancelled = run_in_transaction(
+            self.session, lambda: self._admin_cancel(admin, order_id, request, idempotency_key)
+        )
+        if cancelled is not None:
+            self._deliver_refund(cancelled)
+        return self._cancelled_view(order_id)
+
+    def _admin_cancel(
+        self,
+        admin: User,
+        order_id: uuid.UUID,
+        request: AdminCancelOrderRequest,
+        idempotency_key: str,
+    ) -> _PendingRefund | None:
+        """Raising rolls everything back; None for a replay or nothing to send (FR-32)."""
+        replay = self.idempotency.claim(
+            admin.id, idempotency_key, {"order_id": str(order_id), **request.model_dump()}
+        )
+        if replay is not None:
+            return None
+        if self.repo.find_order(order_id) is None:
+            raise OrderNotFoundError
+        order = self.repo.lock_order(order_id)
+        if order.status not in _ADMIN_CANCELLABLE:
+            raise OrderConflictError(f"order is {order.status.value}", order)
+        if order.version != request.version:
+            # The kitchen or the Student changed it since the Administrator looked.
+            raise OrderConflictError("the order has changed", order, order.paid_paise)
+
+        self._move(order, OrderStatus.CANCELLED, actor=admin, reason=request.reason)
+        refund = Payment(
+            id=uuid.uuid4(),
+            order_id=order.id,
+            kind=PaymentKind.REFUND,
+            cause=PaymentCause.CANCEL,
+            amount_paise=order.paid_paise,
+            status=PaymentStatus.PENDING if order.paid_paise else PaymentStatus.SUCCEEDED,
+        )
+        pending = self._record_refund(refund, admin)
+        self.idempotency.complete(admin.id, idempotency_key, {"order_id": str(order.id)})
         return pending
 
     def _record_refund(self, refund: Payment, actor: User) -> _PendingRefund | None:

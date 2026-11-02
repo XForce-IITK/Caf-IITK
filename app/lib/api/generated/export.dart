@@ -6,14 +6,15 @@
 export 'clients/agent_client.dart';
 export 'clients/inventory_client.dart';
 export 'clients/catalogue_client.dart';
+export 'clients/ordering_client.dart';
 export 'clients/proposals_client.dart';
 export 'clients/slots_client.dart';
 export 'clients/identity_client.dart';
 export 'clients/kitchen_client.dart';
-export 'clients/ordering_client.dart';
 export 'clients/pricing_client.dart';
 export 'clients/ops_client.dart';
 // Data classes
+export 'models/admin_cancel_order_request.dart';
 export 'models/agent_run_detail_out.dart';
 export 'models/agent_run_out.dart';
 export 'models/agent_run_status.dart';

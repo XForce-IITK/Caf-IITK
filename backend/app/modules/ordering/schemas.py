@@ -124,6 +124,12 @@ class CancelOrderRequest(BaseModel):
     version: Annotated[int, Field(ge=1)]
 
 
+class AdminCancelOrderRequest(CancelOrderRequest):
+    """FR-38: the Administrator must say why; whitespace alone is no reason."""
+
+    reason: Annotated[str, Field(min_length=1, max_length=500, pattern=r"\S")]
+
+
 class RefundOut(BaseModel):
     amount_paise: int
     # PENDING until mockpay acknowledges it; the outbox retries it (FR-39).

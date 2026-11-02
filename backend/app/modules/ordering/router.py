@@ -26,6 +26,7 @@ from app.modules.ordering.modification import (
 )
 from app.modules.ordering.retry import TransientFailureError
 from app.modules.ordering.schemas import (
+    AdminCancelOrderRequest,
     CancelledOrderOut,
     CancelOrderRequest,
     ModificationQuoteOut,
@@ -203,6 +204,66 @@ def cancel_order(
         return OrderService(session, gateway).cancel(
             user, order_id, body, idempotency_key, clock.now()
         )
+    except OrderNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
+    except IdempotencyKeyReusedError:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Idempotency key already used with a different request",
+        ) from None
+    except RequestInProgressError:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "The original request is still in progress"
+        ) from None
+    except OrderConflictError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "message": exc.reason,
+                "status": exc.status.value,
+                "version": exc.version,
+                "refund_paise": exc.refund_paise,
+            },
+        ) from None
+    except TransientFailureError:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Busy, try again", headers={"Retry-After": "1"}
+        ) from None
+
+
+@router.post(
+    "/admin/orders/{order_id}/cancel",
+    responses={
+        403: {"description": "Only the Administrator cancels any order"},
+        404: {"description": "No such order"},
+        409: {
+            "description": "The order is PENDING_PAYMENT or terminal, the version is stale "
+            "(current status, version and refund in the body), or the original request "
+            "with this key is still in progress"
+        },
+        422: {
+            "description": "No reason given, or the idempotency key was already used with a "
+            "different request"
+        },
+        503: {"description": "Could not complete after retries; nothing was changed"},
+    },
+)
+def admin_cancel_order(
+    order_id: uuid.UUID,
+    body: AdminCancelOrderRequest,
+    idempotency_key: IdempotencyKeyHeader,
+    user: Annotated[User, Depends(require_permission(Permission.CANCEL_ANY_ORDER))],
+    session: Annotated[Session, Depends(get_session)],
+    gateway: Annotated[PaymentGateway, Depends(get_payment_gateway)],
+) -> CancelledOrderOut:
+    """FR-38: cancel an ACCEPTED, PREPARING or READY order with a mandatory reason and a
+    100 % refund. The seat is always released; portions only from ACCEPTED (T6, T7, T9).
+
+    `version` is the order version the Administrator saw. A repeat with the same key
+    returns the same result; there is never a second refund.
+    """
+    try:
+        return OrderService(session, gateway).admin_cancel(user, order_id, body, idempotency_key)
     except OrderNotFoundError:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Order not found") from None
     except IdempotencyKeyReusedError:
