@@ -15,6 +15,11 @@ from app.core.security import (
 )
 from app.models.enums import Role
 from app.models.identity import User
+from app.modules.identity.rate_limit import (
+    RateLimiter,
+    login_account_subject,
+    login_ip_subject,
+)
 from app.modules.identity.repository import RefreshTokenRepository, UserRepository
 from app.modules.identity.schemas import LoginRequest, RegisterRequest, TokenPair
 
@@ -69,8 +74,24 @@ class IdentityService:
             )
             return True
 
-    def login(self, request: LoginRequest) -> TokenPair:
-        """FR-4. Unknown email, wrong password and deactivated account all fail the same way."""
+    def login(self, request: LoginRequest, client_ip: str) -> TokenPair:
+        """FR-4. Unknown email, wrong password and deactivated account all fail the same way.
+
+        Failures are limited per account and per client IP (NFR-21); past the limit the
+        password is not even checked and RateLimitExceededError is raised.
+        """
+        limiter = RateLimiter(self.session)
+        attempt = limiter.take(
+            [login_account_subject(request.email), login_ip_subject(client_ip)],
+            cap=get_settings().login_failure_limit,
+        )
+        # A failure (or an error) keeps its place; only failures are meant to count, so a
+        # successful login hands its place back.
+        pair = self._check_credentials(request)
+        limiter.give_back(attempt)
+        return pair
+
+    def _check_credentials(self, request: LoginRequest) -> TokenPair:
         with self.session.begin():
             user = self.users.get_by_email(request.email)
             if user is None:

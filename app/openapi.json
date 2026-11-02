@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "AdminCancelOrderRequest": {
+        "description": "FR-38: the Administrator must say why; whitespace alone is no reason.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "AdminCancelOrderRequest",
+        "type": "object"
+      },
       "AgentRunDetailOut": {
         "description": "FR-63: the run, its report (FR-52), its proposals and its tool-call log (FR-62).",
         "properties": {
@@ -723,7 +746,7 @@
         "type": "string"
       },
       "OrderDetailOut": {
-        "description": "FR-40: the order and every state change so far, oldest first.",
+        "description": "FR-40 and FR-28: the order, every state change so far, every price snapshot\nversion and every refund, each oldest first.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -749,10 +772,24 @@
           "price": {
             "$ref": "#/components/schemas/QuoteOut"
           },
+          "refunds": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRefundOut"
+            },
+            "title": "Refunds",
+            "type": "array"
+          },
           "slot_id": {
             "format": "uuid",
             "title": "Slot Id",
             "type": "string"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotOut"
+            },
+            "title": "Snapshots",
+            "type": "array"
           },
           "status": {
             "$ref": "#/components/schemas/OrderStatus"
@@ -775,7 +812,9 @@
           "subsidy_applied",
           "price",
           "created_at",
-          "history"
+          "history",
+          "snapshots",
+          "refunds"
         ],
         "title": "OrderDetailOut",
         "type": "object"
@@ -829,6 +868,33 @@
         "title": "OrderOut",
         "type": "object"
       },
+      "OrderRefundOut": {
+        "properties": {
+          "amount_paise": {
+            "title": "Amount Paise",
+            "type": "integer"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "cause": {
+            "$ref": "#/components/schemas/PaymentCause"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          }
+        },
+        "required": [
+          "amount_paise",
+          "cause",
+          "status",
+          "at"
+        ],
+        "title": "OrderRefundOut",
+        "type": "object"
+      },
       "OrderStatus": {
         "description": "States of Table 4.6-A in the SRS.",
         "enum": [
@@ -842,6 +908,16 @@
           "PAYMENT_FAILED"
         ],
         "title": "OrderStatus",
+        "type": "string"
+      },
+      "PaymentCause": {
+        "enum": [
+          "CREATE",
+          "MODIFY",
+          "CANCEL",
+          "EXPIRY"
+        ],
+        "title": "PaymentCause",
         "type": "string"
       },
       "PaymentStatus": {
@@ -1629,6 +1705,30 @@
         "title": "SlotQueueOut",
         "type": "object"
       },
+      "SnapshotOut": {
+        "description": "One immutable price snapshot version (FR-27).",
+        "properties": {
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "priced_at": {
+            "format": "date-time",
+            "title": "Priced At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "priced_at",
+          "price"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
       "TokenPair": {
         "properties": {
           "access_token": {
@@ -2105,6 +2205,82 @@
         ]
       }
     },
+    "/api/v1/admin/orders/{order_id}/cancel": {
+      "post": {
+        "description": "FR-38: cancel an ACCEPTED, PREPARING or READY order with a mandatory reason and a\n100 % refund. The seat is always released; portions only from ACCEPTED (T6, T7, T9).\n\n`version` is the order version the Administrator saw. A repeat with the same key\nreturns the same result; there is never a second refund.",
+        "operationId": "admin_cancel_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCancelOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator cancels any order"
+          },
+          "404": {
+            "description": "No such order"
+          },
+          "409": {
+            "description": "The order is PENDING_PAYMENT or terminal, the version is stale (current status, version and refund in the body), or the original request with this key is still in progress"
+          },
+          "422": {
+            "description": "No reason given, or the idempotency key was already used with a different request"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was changed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Cancel Order",
+        "tags": [
+          "ordering"
+        ]
+      }
+    },
     "/api/v1/admin/proposals": {
       "get": {
         "description": "UC-25 step 1: proposals, newest first; PENDING only unless another status is asked for.\n\nProposals whose target start has passed, or that a newer one superseded, are\nexpired first (FR-56). Each names its run, whose report holds the forecast.",
@@ -2386,6 +2562,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many failed logins for this account or address (NFR-21)"
           }
         },
         "summary": "Login",
@@ -2831,6 +3010,62 @@
       }
     },
     "/api/v1/orders": {
+      "get": {
+        "description": "FR-28: the caller's own orders, newest first, each with its latest price.\n\nOpen one with GET /orders/{order_id} for every snapshot version and refund.",
+        "operationId": "list_my_orders",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderOut"
+                  },
+                  "title": "Response List My Orders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Students have orders"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Orders",
+        "tags": [
+          "ordering"
+        ]
+      },
       "post": {
         "description": "FR-30, FR-33: reserve the portions and a seat, then take payment.\n\n201 with the order in ACCEPTED, or in PAYMENT_FAILED (holds returned) when the\npayment is declined or times out. A repeat with the same key returns the same order.",
         "operationId": "place_order",
@@ -2879,7 +3114,10 @@
             "description": "Ordering not open yet, an item or the slot is unavailable (named in the body), the price differs from the quote (fresh quote in the body), or the original request with this key is still in progress"
           },
           "422": {
-            "description": "Unknown item, quantity above P-MAX_QTY, or the idempotency key was already used with a different cart"
+            "description": "Unknown item, quantity above P-MAX_QTY, already P-MAX_ACTIVE unfinished orders on that date, or the idempotency key was already used with a different cart"
+          },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
           },
           "503": {
             "description": "Could not complete after retries; nothing was reserved"
@@ -2898,7 +3136,7 @@
     },
     "/api/v1/orders/{order_id}": {
       "get": {
-        "description": "FR-40: the order's current status and every transition so far, oldest first.\n\nThe client polls this every P-POLL while the order is not finished. Another\nStudent's order answers 404 and is logged as a security event (FR-7).",
+        "description": "FR-40, FR-28: the order's current status and every transition, price snapshot\nversion and refund so far, oldest first.\n\nThe client polls this every P-POLL while the order is not finished. Another\nStudent's order answers 404 and is logged as a security event (FR-7).",
         "operationId": "get_order",
         "parameters": [
           {
@@ -3013,6 +3251,9 @@
           "422": {
             "description": "Unknown item, quantity above P-MAX_QTY, a slot on another day, nothing to change, or the idempotency key was already used with a different request"
           },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
+          },
           "503": {
             "description": "Could not complete after retries; nothing was changed"
           }
@@ -3088,6 +3329,9 @@
           },
           "422": {
             "description": "The idempotency key was already used with a different request"
+          },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
           },
           "503": {
             "description": "Could not complete after retries; nothing was changed"

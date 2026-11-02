@@ -1,17 +1,19 @@
 """Authentication (NFR-19) and authorisation (FR-6) dependencies for every endpoint."""
 
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.security import InvalidTokenError, decode_access_token
 from app.db.session import get_session
 from app.models.identity import User
 from app.modules.audit.service import record_security_event
 from app.modules.identity.permissions import Permission, is_permitted
+from app.modules.identity.rate_limit import RateLimiter, RateLimitExceededError, order_subject
 from app.modules.identity.repository import UserRepository
 
 SessionDep = Annotated[Session, Depends(get_session)]
@@ -75,3 +77,37 @@ def require_permission(permission: Permission) -> Callable[..., User]:
         return user
 
     return dependency
+
+
+def client_ip(request: Request) -> str:
+    """The caller's address. Behind nginx this relies on the server trusting the proxy's
+    X-Forwarded-For (uvicorn/gunicorn `--forwarded-allow-ips`); the header is never read
+    here, so a client cannot choose its own address.
+    """
+    return request.client.host if request.client else "unknown"
+
+
+def too_many_requests(exc: RateLimitExceededError) -> HTTPException:
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        f"Too many attempts. Try again in {exc.retry_after_s} seconds.",
+        headers={"Retry-After": str(exc.retry_after_s)},
+    )
+
+
+def limit_order_requests(user: CurrentUser, session: SessionDep) -> None:
+    """NFR-21: at most P order create/modify/cancel requests per minute per Student.
+
+    Every request counts, including a repeat with the same idempotency key.
+
+        @router.post("/orders", dependencies=[Depends(limit_order_requests)])
+    """
+    try:
+        RateLimiter(session).take([order_subject(user.id)], cap=get_settings().order_request_limit)
+    except RateLimitExceededError as exc:
+        raise too_many_requests(exc) from None
+
+
+TOO_MANY_ORDER_REQUESTS: dict[int | str, dict[str, Any]] = {
+    429: {"description": "Too many order requests this minute (NFR-21)"}
+}

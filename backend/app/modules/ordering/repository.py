@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.capacity import DailyInventory, Slot
@@ -24,6 +24,11 @@ from app.models.ordering import (
     PriceSnapshot,
 )
 from app.models.platform import Setting
+
+# Not yet finished: these count towards P-MAX_ACTIVE (FR-31).
+ACTIVE_STATUSES = frozenset(
+    {OrderStatus.PENDING_PAYMENT, OrderStatus.ACCEPTED, OrderStatus.PREPARING, OrderStatus.READY}
+)
 
 
 class OrderRepository:
@@ -62,6 +67,22 @@ class OrderRepository:
         """
         self.session.execute(
             select(User.id).where(User.id == student_id).with_for_update(key_share=True)
+        )
+
+    def count_active_orders(self, student_id: uuid.UUID, service_date: date) -> int:
+        """The Student's non-terminal orders for slots on `service_date` (FR-31)."""
+        return (
+            self.session.scalar(
+                select(func.count())
+                .select_from(Order)
+                .join(Slot, Slot.id == Order.slot_id)
+                .where(
+                    Order.student_id == student_id,
+                    Slot.service_date == service_date,
+                    Order.status.in_(ACTIVE_STATUSES),
+                )
+            )
+            or 0
         )
 
     def lock_inventory(
@@ -272,6 +293,48 @@ class OrderRepository:
             )
             .execution_options(populate_existing=True)
         ).one_or_none()
+
+    def get_snapshots(self, order_id: uuid.UUID) -> list[PriceSnapshot]:
+        """Every price snapshot version of the order, v1 first (FR-27)."""
+        return list(
+            self.session.scalars(
+                select(PriceSnapshot)
+                .where(PriceSnapshot.order_id == order_id)
+                .order_by(PriceSnapshot.version)
+            )
+        )
+
+    def get_refund_payments(self, order_id: uuid.UUID) -> list[Payment]:
+        """Every refund recorded for the order as full rows, oldest first (FR-28)."""
+        return list(
+            self.session.scalars(
+                select(Payment)
+                .where(Payment.order_id == order_id, Payment.kind == PaymentKind.REFUND)
+                .order_by(Payment.created_at, Payment.id)
+            )
+        )
+
+    def list_student_orders(
+        self, student_id: uuid.UUID, limit: int
+    ) -> list[tuple[Order, PriceSnapshot]]:
+        """The Student's orders, newest first, each with its latest snapshot."""
+        latest = (
+            select(func.max(PriceSnapshot.version))
+            .where(PriceSnapshot.order_id == Order.id)
+            .correlate(Order)
+            .scalar_subquery()
+        )
+        rows = self.session.execute(
+            select(Order, PriceSnapshot)
+            .join(
+                PriceSnapshot,
+                (PriceSnapshot.order_id == Order.id) & (PriceSnapshot.version == latest),
+            )
+            .where(Order.student_id == student_id)
+            .order_by(Order.created_at.desc(), Order.id)
+            .limit(limit)
+        )
+        return [(order, snapshot) for order, snapshot in rows.tuples()]
 
     def latest_snapshot(self, order_id: uuid.UUID) -> PriceSnapshot:
         return self.session.scalars(
