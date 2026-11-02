@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, StringConstraints
 
+from app.core.text import NoNul
 from app.modules.agent.schemas import ProposalOut
 
 
@@ -18,7 +19,9 @@ class ProposalDetailOut(ProposalOut):
 
 
 class RejectRequest(BaseModel):
-    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
+    reason: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300), NoNul
+    ]
 
 
 class ProposalConflictOut(BaseModel):
