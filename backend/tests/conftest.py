@@ -125,6 +125,9 @@ def live_stack(database_url: str) -> Iterator[LiveStack]:
         "CAF_MOCKPAY_URL": stack.mockpay_url,
         # The secret this process signs test tokens with, whatever the environment says.
         "CAF_JWT_SECRET": get_settings().jwt_secret,
+        # The mixed-workload test drives each Student far past NFR-21's order limit on
+        # purpose; test_rate_limits.py checks the limits themselves.
+        "CAF_ORDER_REQUEST_LIMIT": "1000000",
     }
     processes: list[subprocess.Popen[bytes]] = []
     try:
@@ -171,6 +174,8 @@ def db_client(engine: Engine) -> Iterator[TestClient]:
     with engine.begin() as connection:
         # Every business table hangs off one of these; settings keep their seeded defaults.
         connection.execute(text("TRUNCATE users, menu_items, service_days, discount_rules CASCADE"))
+        # Requests all come from one test client address, so counters must not carry over.
+        connection.execute(text("TRUNCATE rate_limits"))
 
 
 @pytest.fixture

@@ -1,11 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from app.models.enums import Role
 from app.models.identity import RefreshToken, User
+from app.models.platform import RateLimit
 
 
 class UserRepository:
@@ -47,3 +49,42 @@ class RefreshTokenRepository:
             .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
             .values(revoked_at=now)
         )
+
+
+class RateLimitRepository:
+    """Counters in `rate_limits`, one row per subject and window (SADD: shared counters)."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def take(self, subject: str, window_start: datetime, cap: int) -> bool:
+        """Count one against the window unless it already holds `cap`; return whether counted.
+
+        A single upsert, so concurrent requests on any API worker cannot overshoot the cap.
+        """
+        statement = (
+            insert(RateLimit)
+            .values(subject=subject, window_start=window_start, count=1)
+            .on_conflict_do_update(
+                index_elements=[RateLimit.subject, RateLimit.window_start],
+                set_={"count": RateLimit.count + 1},
+                where=RateLimit.count < cap,
+            )
+            .returning(RateLimit.count)
+        )
+        return self.session.execute(statement).scalar_one_or_none() is not None
+
+    def give_back(self, subject: str, window_start: datetime) -> None:
+        self.session.execute(
+            update(RateLimit)
+            .where(
+                RateLimit.subject == subject,
+                RateLimit.window_start == window_start,
+                RateLimit.count > 0,
+            )
+            .values(count=RateLimit.count - 1)
+        )
+
+    def delete_before(self, cutoff: datetime) -> int:
+        result = self.session.execute(delete(RateLimit).where(RateLimit.window_start < cutoff))
+        return result.rowcount  # type: ignore[attr-defined, no-any-return]
