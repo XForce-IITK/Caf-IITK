@@ -3,11 +3,17 @@ from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.models.capacity import DailyInventory, Slot
 from app.models.catalogue import MenuItem
-from app.models.enums import OrderStatus, PaymentCause, PaymentKind, PaymentStatus
+from app.models.enums import (
+    ModificationStatus,
+    OrderStatus,
+    PaymentCause,
+    PaymentKind,
+    PaymentStatus,
+)
 from app.models.identity import User
 from app.models.ordering import (
     Order,
@@ -151,17 +157,99 @@ class OrderRepository:
         ).one()
 
     def get_charges(self, order_id: uuid.UUID) -> list[tuple[uuid.UUID, int]]:
-        """Approved authorisations (placement and price rises), oldest first."""
+        """Approved authorisations (placement and price rises) that were kept, oldest first.
+
+        A late approval that was voided (FR-34) is SUCCEEDED but is not a charge:
+        mockpay refuses any refund against it.
+        """
+        void = aliased(Payment)
+        voided = (
+            select(void.id)
+            .where(
+                void.order_id == Payment.order_id,
+                void.kind == PaymentKind.VOID,
+                void.modification_id.is_not_distinct_from(Payment.modification_id),
+            )
+            .exists()
+        )
         rows = self.session.execute(
             select(Payment.id, Payment.amount_paise)
             .where(
                 Payment.order_id == order_id,
                 Payment.kind == PaymentKind.AUTH,
                 Payment.status == PaymentStatus.SUCCEEDED,
+                ~voided,
             )
             .order_by(Payment.created_at, Payment.id)
         )
         return [(payment_id, amount) for payment_id, amount in rows]
+
+    def find_auth(self, order_id: uuid.UUID, modification_id: uuid.UUID | None) -> Payment | None:
+        """The authorisation of a placement (no modification) or of one modification."""
+        return self.session.scalars(
+            select(Payment)
+            .where(
+                Payment.order_id == order_id,
+                Payment.kind == PaymentKind.AUTH,
+                Payment.modification_id.is_not_distinct_from(modification_id),
+            )
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+
+    def has_void(self, order_id: uuid.UUID, modification_id: uuid.UUID | None) -> bool:
+        return (
+            self.session.scalar(
+                select(Payment.id)
+                .where(
+                    Payment.order_id == order_id,
+                    Payment.kind == PaymentKind.VOID,
+                    Payment.modification_id.is_not_distinct_from(modification_id),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    def stale_pending_orders(self, created_before: datetime) -> list[uuid.UUID]:
+        """PENDING_PAYMENT orders older than the hold expiry, in lock order (FR-34a)."""
+        return list(
+            self.session.scalars(
+                select(Order.id)
+                .where(
+                    Order.status == OrderStatus.PENDING_PAYMENT,
+                    Order.created_at < created_before,
+                )
+                .order_by(Order.id)
+            )
+        )
+
+    def stale_holding_modifications(
+        self, created_before: datetime
+    ) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        """(order id, modification id) of HOLDING modifications older than the hold expiry."""
+        rows = self.session.execute(
+            select(OrderModification.order_id, OrderModification.id)
+            .where(
+                OrderModification.status == ModificationStatus.HOLDING,
+                OrderModification.created_at < created_before,
+            )
+            .order_by(OrderModification.order_id, OrderModification.id)
+        )
+        return [(order_id, modification_id) for order_id, modification_id in rows]
+
+    def pending_outbox(self, limit: int) -> list[uuid.UUID]:
+        """Voids and refunds not yet acknowledged by the gateway, oldest first."""
+        return list(
+            self.session.scalars(
+                select(Payment.id)
+                .where(
+                    Payment.kind.in_([PaymentKind.VOID, PaymentKind.REFUND]),
+                    Payment.status == PaymentStatus.PENDING,
+                )
+                .order_by(Payment.created_at, Payment.id)
+                .limit(limit)
+            )
+        )
 
     def get_refunds(self, order_id: uuid.UUID) -> list[tuple[uuid.UUID, int]]:
         """Every refund record of the order, in the order they were recorded."""
