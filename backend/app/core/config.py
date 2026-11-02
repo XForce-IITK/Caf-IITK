@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     access_ttl_min: int = 15
     refresh_ttl_days: int = 7
 
+    # NFR-21, per minute: failed logins per account and per client IP, and order
+    # create/modify/cancel requests per Student.
+    login_failure_limit: int = 5
+    order_request_limit: int = 10
+
     # LLM for the Kitchen Planning Agent (OpenAI). Without a key every run uses the
     # heuristic planner (FR-59). The key is a SecretStr, so it never appears in a repr.
     llm_api_key: SecretStr | None = None
