@@ -4,8 +4,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import OrderStatus, PaymentStatus, Role
-from app.models.ordering import Order, OrderTransition, PriceSnapshot
+from app.models.enums import OrderStatus, PaymentCause, PaymentStatus, Role
+from app.models.ordering import Order, OrderTransition, Payment, PriceSnapshot
 from app.modules.pricing.schemas import QuoteOut, QuoteRequest
 
 
@@ -40,17 +40,58 @@ class TransitionOut(BaseModel):
     reason: str | None
 
 
+class SnapshotOut(BaseModel):
+    """One immutable price snapshot version (FR-27)."""
+
+    version: int
+    priced_at: datetime
+    price: QuoteOut
+
+
+class OrderRefundOut(BaseModel):
+    amount_paise: int
+    # CANCEL, or MODIFY when a cheaper change was refunded the difference.
+    cause: PaymentCause
+    # PENDING until mockpay acknowledges it; the outbox retries it (FR-39).
+    status: PaymentStatus
+    at: datetime
+
+
 class OrderDetailOut(OrderOut):
-    """FR-40: the order and every state change so far, oldest first."""
+    """FR-40 and FR-28: the order, every state change so far, every price snapshot
+    version and every refund, each oldest first."""
 
     history: list[TransitionOut]
+    snapshots: list[SnapshotOut]
+    refunds: list[OrderRefundOut]
 
     @classmethod
     def from_history(
-        cls, order: Order, snapshot: PriceSnapshot, transitions: list[OrderTransition]
+        cls,
+        order: Order,
+        snapshots: list[PriceSnapshot],
+        transitions: list[OrderTransition],
+        refunds: list[Payment],
     ) -> "OrderDetailOut":
         return cls(
-            **_order_fields(order, snapshot),
+            **_order_fields(order, snapshots[-1]),
+            snapshots=[
+                SnapshotOut(
+                    version=row.version,
+                    priced_at=row.priced_at,
+                    price=QuoteOut.model_validate(row.breakdown),
+                )
+                for row in snapshots
+            ],
+            refunds=[
+                OrderRefundOut(
+                    amount_paise=row.amount_paise,
+                    cause=row.cause,
+                    status=row.status,
+                    at=row.created_at,
+                )
+                for row in refunds
+            ],
             history=[
                 TransitionOut(
                     from_status=row.from_status,
