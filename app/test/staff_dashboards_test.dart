@@ -802,6 +802,212 @@ void main() {
       );
     });
 
+    group('staff accounts (US-03)', () {
+      const usersUrl = '/api/v1/admin/users';
+      Map<String, Object?> account(
+        String id,
+        String name,
+        String role, {
+        bool active = true,
+      }) => {
+        'id': id,
+        'name': name,
+        'email': '$id@caf.example',
+        'role': role,
+        'is_active': active,
+      };
+      late List<Map<String, Object?>> accounts;
+
+      setUp(() {
+        accounts = [
+          account('admin', 'Asha', 'ADMIN'),
+          account('ravi', 'Ravi', 'KITCHEN'),
+          account('old', 'Old Cook', 'KITCHEN', active: false),
+        ];
+        cafe.routes[usersUrl] = (r) {
+          if (r.method == 'GET') return Reply(200, accounts);
+          final body = r.data! as Map<String, Object?>;
+          final created = account(
+            'new',
+            body['name']! as String,
+            body['role']! as String,
+          );
+          accounts = [...accounts, created];
+          return Reply(201, created);
+        };
+        cafe.routes['$usersUrl/*'] = (r) {
+          final id = r.path.split('/')[5];
+          final active = r.path.endsWith('/reactivate');
+          accounts = [
+            for (final a in accounts)
+              a['id'] == id ? {...a, 'is_active': active} : a,
+          ];
+          return Reply(200, accounts.firstWhere((a) => a['id'] == id));
+        };
+      });
+
+      testWidgets('the tab lists staff accounts with their role and status', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        expect(find.text('ravi@caf.example · Kitchen Staff'), findsOneWidget);
+        expect(find.text('admin@caf.example · Administrator'), findsOneWidget);
+        expect(
+          find.text('old@caf.example · Kitchen Staff · Deactivated'),
+          findsOneWidget,
+        );
+        expect(find.text('Reactivate'), findsOneWidget);
+      });
+
+      testWidgets('TC-US03-AC1: creating a Kitchen Staff account sends it and '
+          'lists it', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        await tester.enterText(
+          find.byKey(const Key('new-staff-name')),
+          'Meena',
+        );
+        await tester.enterText(
+          find.byKey(const Key('new-staff-email')),
+          'meena@caf.example',
+        );
+        await tester.enterText(
+          find.byKey(const Key('new-staff-password')),
+          'short',
+        );
+        await _tap(tester, 'add-staff');
+        expect(
+          _text(tester, 'add-staff-message'),
+          'Enter a name, an email address and a password of at least 8 '
+          'characters.',
+        );
+        expect(
+          cafe.server.to(usersUrl).where((r) => r.method == 'POST'),
+          isEmpty,
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('new-staff-password')),
+          'kitchen-horse',
+        );
+        await _tap(tester, 'add-staff');
+
+        final sent = cafe.server.to(usersUrl).where((r) => r.method == 'POST');
+        expect(sent.single.data, {
+          'name': 'Meena',
+          'email': 'meena@caf.example',
+          'password': 'kitchen-horse',
+          'role': 'KITCHEN',
+        });
+        expect(
+          _text(tester, 'add-staff-message'),
+          'Meena can now log in as Kitchen Staff.',
+        );
+        expect(find.byKey(const Key('account-new')), findsOneWidget);
+      });
+
+      testWidgets('an Administrator account can be created too', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        await tester.enterText(find.byKey(const Key('new-staff-name')), 'Dev');
+        await tester.enterText(
+          find.byKey(const Key('new-staff-email')),
+          'dev@caf.example',
+        );
+        await tester.enterText(
+          find.byKey(const Key('new-staff-password')),
+          'admin-horse',
+        );
+        final segment = find.descendant(
+          of: find.byKey(const Key('new-staff-role')),
+          matching: find.text('Administrator'),
+        );
+        await tester.ensureVisible(segment);
+        await tester.tap(segment);
+        await tester.pumpAndSettle();
+        await _tap(tester, 'add-staff');
+
+        final sent = cafe.server.to(usersUrl).where((r) => r.method == 'POST');
+        expect((sent.single.data! as Map)['role'], 'ADMIN');
+      });
+
+      testWidgets('TC-US03-AC2: deactivating asks first, then marks the '
+          'account deactivated', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        await _tap(tester, 'toggle-ravi');
+        expect(find.text('Deactivate Ravi?'), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(cafe.server.to('$usersUrl/ravi/deactivate'), isEmpty);
+
+        await _tap(tester, 'toggle-ravi');
+        await _tap(tester, 'confirm-deactivate');
+
+        expect(cafe.server.to('$usersUrl/ravi/deactivate'), hasLength(1));
+        expect(
+          find.text('ravi@caf.example · Kitchen Staff · Deactivated'),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('reactivating needs no confirmation', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        await _tap(tester, 'toggle-old');
+
+        expect(cafe.server.to('$usersUrl/old/reactivate'), hasLength(1));
+        expect(find.text('old@caf.example · Kitchen Staff'), findsOneWidget);
+      });
+
+      testWidgets("deactivating one's own account shows the server's reason", (
+        tester,
+      ) async {
+        cafe.routes['$usersUrl/*'] = (_) => const Reply(409, {
+          'detail': "You cannot change your own account's status",
+        });
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        await _tap(tester, 'toggle-admin');
+        await _tap(tester, 'confirm-deactivate');
+
+        expect(
+          _text(tester, 'account-message-admin'),
+          "You cannot change your own account's status",
+        );
+      });
+
+      testWidgets('a taken email shows the server reason', (tester) async {
+        cafe.routes[usersUrl] = (r) => r.method == 'GET'
+            ? Reply(200, accounts)
+            : const Reply(409, {'detail': 'Email already registered'});
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-staff');
+
+        await tester.enterText(find.byKey(const Key('new-staff-name')), 'Ravi');
+        await tester.enterText(
+          find.byKey(const Key('new-staff-email')),
+          'ravi@caf.example',
+        );
+        await tester.enterText(
+          find.byKey(const Key('new-staff-password')),
+          'kitchen-horse',
+        );
+        await _tap(tester, 'add-staff');
+
+        expect(_text(tester, 'add-staff-message'), 'Email already registered');
+      });
+    });
+
     testWidgets("FR-17: configuring tomorrow's service window", (tester) async {
       final tomorrow = istToday().add(const Duration(days: 1));
       cafe.routes['/api/v1/admin/service-days/*'] = (_) => const Reply(200, {

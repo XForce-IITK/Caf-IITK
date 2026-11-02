@@ -5,9 +5,11 @@ import 'agent_tab.dart';
 import 'items_tab.dart';
 import 'proposals_tab.dart';
 import 'service_day_tab.dart';
+import 'staff_tab.dart';
 
 /// The Administrator's screen (FR-63): proposals waiting for a decision, the
-/// planning agent's runs and reports, items and portions, and the service day.
+/// planning agent's runs and reports, items and portions, the service day, and
+/// staff accounts.
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
 
@@ -16,6 +18,7 @@ class AdminDashboard extends StatelessWidget {
     (Key('tab-agent'), 'Agent runs', AgentTab()),
     (Key('tab-items'), 'Items & portions', ItemsTab()),
     (Key('tab-service-day'), 'Service window', ServiceDayTab()),
+    (Key('tab-staff'), 'Staff', StaffTab()),
   ];
 
   @override
