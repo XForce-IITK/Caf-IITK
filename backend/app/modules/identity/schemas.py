@@ -20,14 +20,18 @@ def normalise_institute_email(value: str) -> str:
     return email
 
 
-InstituteEmail = Annotated[str, Field(max_length=254), AfterValidator(normalise_institute_email)]
+InstituteEmail = Annotated[
+    str, Field(max_length=254), NoNul, AfterValidator(normalise_institute_email)
+]
 
 
 class RegisterRequest(BaseModel):
     # Unknown fields (e.g. role) are rejected with 422 (US-03 AC3).
     model_config = ConfigDict(extra="forbid")
 
-    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100), NoNul
+    ]
     email: InstituteEmail
     # Upper bound keeps hashing cost bounded; minimum from the SRS password NFR.
     password: Annotated[str, Field(min_length=8, max_length=128)]
@@ -50,7 +54,9 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # Any domain: staff accounts need not be @iitk.ac.in. Unknown emails get the same 401.
-    email: Annotated[str, Field(min_length=1, max_length=254), AfterValidator(_normalise_email)]
+    email: Annotated[
+        str, Field(min_length=1, max_length=254), NoNul, AfterValidator(_normalise_email)
+    ]
     password: Annotated[str, Field(min_length=1, max_length=128)]
 
 
