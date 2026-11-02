@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from app.core.text import NoNul
 from app.models.enums import ItemCategory, ItemStatus
 from app.modules.catalogue.domain import NotOrderableReason
 
@@ -15,8 +16,12 @@ MAX_PRICE_PAISE = 50_000
 class ItemCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60)]
-    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300)] = ""
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=60), NoNul
+    ]
+    description: Annotated[str, StringConstraints(strip_whitespace=True, max_length=300), NoNul] = (
+        ""
+    )
     category: ItemCategory
     price_paise: Annotated[int, Field(ge=MIN_PRICE_PAISE, le=MAX_PRICE_PAISE)]
 
@@ -25,7 +30,9 @@ class FlagRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # FR-11: why the item is paused, e.g. "gas cylinder ran out".
-    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+    reason: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200), NoNul
+    ]
 
 
 class ItemOut(BaseModel):
