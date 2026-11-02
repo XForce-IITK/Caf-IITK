@@ -2386,6 +2386,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many failed logins for this account or address (NFR-21)"
           }
         },
         "summary": "Login",
@@ -2881,6 +2884,9 @@
           "422": {
             "description": "Unknown item, quantity above P-MAX_QTY, or the idempotency key was already used with a different cart"
           },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
+          },
           "503": {
             "description": "Could not complete after retries; nothing was reserved"
           }
@@ -3013,6 +3019,9 @@
           "422": {
             "description": "Unknown item, quantity above P-MAX_QTY, a slot on another day, nothing to change, or the idempotency key was already used with a different request"
           },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
+          },
           "503": {
             "description": "Could not complete after retries; nothing was changed"
           }
@@ -3088,6 +3097,9 @@
           },
           "422": {
             "description": "The idempotency key was already used with a different request"
+          },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
           },
           "503": {
             "description": "Could not complete after retries; nothing was changed"

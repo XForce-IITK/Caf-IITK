@@ -1,10 +1,11 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
-from app.modules.identity.dependencies import CurrentUser
+from app.modules.identity.dependencies import CurrentUser, client_ip, too_many_requests
+from app.modules.identity.rate_limit import RateLimitExceededError
 from app.modules.identity.schemas import (
     LoginRequest,
     RefreshRequest,
@@ -37,12 +38,20 @@ def register(body: RegisterRequest, session: SessionDep) -> UserOut:
     return UserOut.model_validate(user)
 
 
-@router.post("/login", responses={401: {"description": "Invalid email or password"}})
-def login(body: LoginRequest, session: SessionDep) -> TokenPair:
+@router.post(
+    "/login",
+    responses={
+        401: {"description": "Invalid email or password"},
+        429: {"description": "Too many failed logins for this account or address (NFR-21)"},
+    },
+)
+def login(body: LoginRequest, request: Request, session: SessionDep) -> TokenPair:
     try:
-        return IdentityService(session).login(body)
+        return IdentityService(session).login(body, client_ip(request))
     except InvalidCredentialsError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password") from None
+    except RateLimitExceededError as exc:
+        raise too_many_requests(exc) from None
 
 
 @router.post("/refresh", responses={401: {"description": "Invalid refresh token"}})
