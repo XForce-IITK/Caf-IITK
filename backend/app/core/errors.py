@@ -35,7 +35,10 @@ async def _database_unavailable(request: Request, exc: Exception) -> JSONRespons
     """
     if isinstance(exc, DBAPIError) and not _connection_lost(exc):
         raise exc
-    log.warning("database unavailable: %s %s: %s", request.method, request.url.path, exc)
+    cause = (
+        "connection pool exhausted" if isinstance(exc, PoolTimeoutError) else "database unavailable"
+    )
+    log.warning("%s: %s %s: %s", cause, request.method, request.url.path, exc)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         content={"detail": "The service is temporarily unavailable. Please try again shortly."},
