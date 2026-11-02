@@ -2981,7 +2981,7 @@
             "description": "Ordering not open yet, an item or the slot is unavailable (named in the body), the price differs from the quote (fresh quote in the body), or the original request with this key is still in progress"
           },
           "422": {
-            "description": "Unknown item, quantity above P-MAX_QTY, or the idempotency key was already used with a different cart"
+            "description": "Unknown item, quantity above P-MAX_QTY, already P-MAX_ACTIVE unfinished orders on that date, or the idempotency key was already used with a different cart"
           },
           "429": {
             "description": "Too many order requests this minute (NFR-21)"
