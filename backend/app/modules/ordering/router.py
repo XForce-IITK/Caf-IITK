@@ -7,7 +7,11 @@ from sqlalchemy.orm import Session
 from app.core import clock
 from app.db.session import get_session
 from app.models.identity import User
-from app.modules.identity.dependencies import require_permission
+from app.modules.identity.dependencies import (
+    TOO_MANY_ORDER_REQUESTS,
+    limit_order_requests,
+    require_permission,
+)
 from app.modules.identity.permissions import Permission
 from app.modules.ordering.idempotency import (
     IdempotencyKeyHeader,
@@ -51,7 +55,9 @@ router = APIRouter(tags=["ordering"])
 @router.post(
     "/orders",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(limit_order_requests)],
     responses={
+        **TOO_MANY_ORDER_REQUESTS,
         403: {"description": "Only Students place orders"},
         404: {"description": "Slot not found"},
         409: {
@@ -148,7 +154,9 @@ def get_order(
 
 @router.post(
     "/orders/{order_id}/cancel",
+    dependencies=[Depends(limit_order_requests)],
     responses={
+        **TOO_MANY_ORDER_REQUESTS,
         403: {"description": "Only Students cancel their own orders"},
         404: {"description": "No such order, or not the caller's"},
         409: {
@@ -299,7 +307,9 @@ def quote_order_modification(
 
 @router.patch(
     "/orders/{order_id}",
+    dependencies=[Depends(limit_order_requests)],
     responses={
+        **TOO_MANY_ORDER_REQUESTS,
         402: {
             "description": "The price difference was declined or timed out; the order is "
             "exactly as before"
