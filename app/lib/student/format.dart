@@ -19,6 +19,27 @@ String formatIstTime(DateTime moment) {
   return '${two(ist.hour)}:${two(ist.minute)}';
 }
 
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// The IST calendar date, e.g. "6 Oct".
+String formatIstDate(DateTime moment) {
+  final ist = moment.toUtc().add(_istOffset);
+  return '${ist.day} ${_months[ist.month - 1]}';
+}
+
 String formatSlot(DateTime startsAt, DateTime endsAt) {
   return '${formatIstTime(startsAt)} – ${formatIstTime(endsAt)}';
 }

@@ -99,6 +99,11 @@ Map<String, Object?> _tracked(String status) {
     _step('PREPARING', 'READY', '2026-10-06T06:40:00Z', 'KITCHEN'),
     _step('READY', 'PICKED_UP', '2026-10-06T06:50:00Z', 'KITCHEN'),
   ];
+  final v1 = {
+    'version': 1,
+    'priced_at': '2026-10-06T05:00:00Z',
+    'price': _quote(),
+  };
   if (status == 'CANCELLED') {
     return {
       ..._order(status),
@@ -107,6 +112,15 @@ Map<String, Object?> _tracked(String status) {
         ...steps.sublist(0, 2),
         _step('ACCEPTED', 'CANCELLED', '2026-10-06T05:30:00Z', 'STUDENT'),
       ],
+      'snapshots': [v1],
+      'refunds': [
+        {
+          'amount_paise': 14000,
+          'cause': 'CANCEL',
+          'status': 'SUCCEEDED',
+          'at': '2026-10-06T05:30:00Z',
+        },
+      ],
     };
   }
   final reached = steps.indexWhere((step) => step['to_status'] == status);
@@ -114,6 +128,8 @@ Map<String, Object?> _tracked(String status) {
     ..._order(status),
     'version': reached,
     'history': steps.sublist(0, reached + 1),
+    'snapshots': [v1],
+    'refunds': <Object?>[],
   };
 }
 
@@ -162,6 +178,10 @@ class _Cafe {
     'difference_paise': -7000,
     'refund': {'amount_paise': 7000, 'status': 'SUCCEEDED'},
   });
+  Reply Function(Seen request) myOrders = (_) => Reply(200, [
+    {..._order('ACCEPTED'), 'id': 'o1'},
+    {..._order('PICKED_UP'), 'id': 'o0', 'created_at': '2026-10-05T05:00:00Z'},
+  ]);
   final delays = <Duration>[];
 
   _Cafe() {
@@ -174,7 +194,7 @@ class _Cafe {
       menuUrl => menu(r),
       slotsUrl => Reply(200, {'service_date': '2026-10-06', 'slots': slots}),
       quotesUrl => quote(r),
-      ordersUrl => placeOrder(r),
+      ordersUrl => r.method == 'GET' ? myOrders(r) : placeOrder(r),
       '$ordersUrl/o1' => r.method == 'PATCH' ? modify(r) : tracking(r),
       '$ordersUrl/o1/quote' => modificationQuote(r),
       '$ordersUrl/o1/cancel' => cancel(r),
@@ -242,6 +262,9 @@ void main() {
     expect(formatPaise(-1600), '−₹16');
     expect(formatIstTime(DateTime.utc(2026, 10, 6, 6, 45)), '12:15');
     expect(formatIstTime(DateTime.utc(2026, 10, 6, 18, 35)), '00:05');
+    // 18:35 UTC is already the next day in IST.
+    expect(formatIstDate(DateTime.utc(2026, 10, 6, 18, 35)), '7 Oct');
+    expect(formatIstDate(DateTime.utc(2026, 1, 1, 5)), '1 Jan');
   });
 
   testWidgets('the menu shows price, portions left and why an item cannot be '
@@ -1367,4 +1390,153 @@ void main() {
       expect(find.text('Order confirmed'), findsOneWidget);
     });
   }
+
+  group('US-21 past orders', () {
+    Future<_Cafe> openMyOrders(WidgetTester tester) async {
+      final cafe = _Cafe();
+      await cafe.open(tester);
+      await _tap(tester, 'my-orders');
+      return cafe;
+    }
+
+    testWidgets('My orders lists every order, newest first, with its price', (
+      tester,
+    ) async {
+      final cafe = await openMyOrders(tester);
+
+      expect(
+        cafe.server.to(ordersUrl).where((r) => r.method == 'GET'),
+        hasLength(1),
+      );
+      final tiles = tester
+          .widgetList<ListTile>(find.byType(ListTile))
+          .map((tile) => tile.key)
+          .toList();
+      expect(tiles, [const Key('order-o1'), const Key('order-o0')]);
+      expect(find.text('6 Oct 10:30 · Confirmed'), findsOneWidget);
+      expect(find.text('5 Oct 10:30 · Picked up'), findsOneWidget);
+      expect(find.text('₹140'), findsNWidgets(2));
+    });
+
+    testWidgets('TC-US21-AC1: a modified order shows v1 as originally shown '
+        'and v2', (tester) async {
+      final cafe = _Cafe();
+      cafe.tracking = (_) => Reply(200, {
+        ..._tracked('ACCEPTED'),
+        'price': _quote(payable: 7000),
+        'snapshots': [
+          {
+            'version': 1,
+            'priced_at': '2026-10-06T05:00:00Z',
+            'price': _quote(),
+          },
+          {
+            'version': 2,
+            'priced_at': '2026-10-06T05:20:00Z',
+            'price': _quote(payable: 7000),
+          },
+        ],
+        'refunds': [
+          {
+            'amount_paise': 7000,
+            'cause': 'MODIFY',
+            'status': 'SUCCEEDED',
+            'at': '2026-10-06T05:20:00Z',
+          },
+        ],
+      });
+      await cafe.open(tester);
+      await _tap(tester, 'my-orders');
+      await _tap(tester, 'order-o1');
+
+      final v1 = find.byKey(const Key('snapshot-v1'));
+      final v2 = find.byKey(const Key('snapshot-v2'));
+      expect(
+        find.descendant(
+          of: v2,
+          matching: find.text('Version 2 (current) · priced 6 Oct 10:50'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: v1,
+          matching: find.text('Version 1 · priced 6 Oct 10:30'),
+        ),
+        findsOneWidget,
+      );
+      // v1 is the breakdown the Student confirmed: ₹140 after discount and subsidy.
+      expect(
+        find.descendant(of: v1, matching: find.text('₹140')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: v1, matching: find.text('−₹16')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: v2, matching: find.text('₹70')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          '₹70 refunded for the change to a cheaper order on 6 Oct at 10:50',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('TC-US21-AC2: a cancelled order shows its refund amount and '
+        'time', (tester) async {
+      final cafe = _Cafe();
+      cafe.tracking = (_) => Reply(200, _tracked('CANCELLED'));
+      await cafe.open(tester);
+      await _tap(tester, 'my-orders');
+      await _tap(tester, 'order-o1');
+
+      expect(
+        find.text('₹140 refunded for the cancellation on 6 Oct at 11:00'),
+        findsOneWidget,
+      );
+      expect(find.text('Cancelled.'), findsOneWidget);
+    });
+
+    testWidgets('an order without refunds says so, and back returns to the '
+        'list', (tester) async {
+      await openMyOrders(tester);
+      await _tap(tester, 'order-o1');
+
+      expect(find.byKey(const Key('no-refunds')), findsOneWidget);
+      expect(find.byKey(const Key('snapshot-v1')), findsOneWidget);
+
+      await _tap(tester, 'back-to-orders');
+      expect(find.byKey(const Key('order-o0')), findsOneWidget);
+      await _tap(tester, 'back-to-menu');
+      expect(find.text('Menu'), findsOneWidget);
+    });
+
+    testWidgets('no orders yet', (tester) async {
+      final cafe = _Cafe();
+      cafe.myOrders = (_) => const Reply(200, <Object?>[]);
+      await cafe.open(tester);
+      await _tap(tester, 'my-orders');
+
+      expect(find.text('You have not placed any orders yet.'), findsOneWidget);
+    });
+
+    testWidgets('a failed load can be retried', (tester) async {
+      final cafe = _Cafe();
+      final good = cafe.myOrders;
+      cafe.myOrders = (_) => const Reply(500);
+      await cafe.open(tester);
+      await _tap(tester, 'my-orders');
+      expect(find.text('Try again'), findsOneWidget);
+
+      cafe.myOrders = good;
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('order-o1')), findsOneWidget);
+    });
+  });
 }

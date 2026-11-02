@@ -7,11 +7,15 @@ from sqlalchemy.orm import Session
 from app.models.identity import User
 from app.modules.audit.service import record_security_event
 from app.modules.ordering.repository import OrderRepository
-from app.modules.ordering.schemas import OrderDetailOut
+from app.modules.ordering.schemas import OrderDetailOut, OrderOut
 
 
 class OrderNotFoundError(Exception):
     """No such order, or it is another Student's: both answer 404 (FR-7)."""
+
+
+# FR-28: how many past orders one page of the list returns at most.
+MAX_LISTED_ORDERS = 200
 
 
 class OrderTrackingService:
@@ -31,8 +35,9 @@ class OrderTrackingService:
             if order is not None and order.student_id == student.id:
                 return OrderDetailOut.from_history(
                     order,
-                    self.repo.latest_snapshot(order_id),
+                    self.repo.get_snapshots(order_id),
                     self.repo.get_transitions(order_id),
+                    self.repo.get_refund_payments(order_id),
                 )
             belongs_to_someone_else = order is not None
         if belongs_to_someone_else:
@@ -44,3 +49,11 @@ class OrderTrackingService:
                 details={"order_id": str(order_id)},
             )
         raise OrderNotFoundError
+
+    def list_for_student(self, student: User, limit: int) -> list[OrderOut]:
+        """FR-28: the Student's own orders, newest first, each at its latest snapshot."""
+        with self.session.begin():
+            return [
+                OrderOut.from_rows(order, snapshot)
+                for order, snapshot in self.repo.list_student_orders(student.id, limit)
+            ]

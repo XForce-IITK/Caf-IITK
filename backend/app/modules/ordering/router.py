@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -42,7 +42,11 @@ from app.modules.ordering.service import (
     PriceChangedError,
     UnavailableError,
 )
-from app.modules.ordering.tracking import OrderNotFoundError, OrderTrackingService
+from app.modules.ordering.tracking import (
+    MAX_LISTED_ORDERS,
+    OrderNotFoundError,
+    OrderTrackingService,
+)
 from app.modules.payments.gateway import PaymentGateway
 from app.modules.payments.mockpay_gateway import get_payment_gateway
 from app.modules.pricing.schemas import QuoteRequest
@@ -128,6 +132,19 @@ def place_order(
         ) from None
 
 
+@router.get("/orders", responses={403: {"description": "Only Students have orders"}})
+def list_my_orders(
+    user: Annotated[User, Depends(require_permission(Permission.VIEW_OWN_ORDERS))],
+    session: Annotated[Session, Depends(get_session)],
+    limit: Annotated[int, Query(ge=1, le=MAX_LISTED_ORDERS)] = 50,
+) -> list[OrderOut]:
+    """FR-28: the caller's own orders, newest first, each with its latest price.
+
+    Open one with GET /orders/{order_id} for every snapshot version and refund.
+    """
+    return OrderTrackingService(session).list_for_student(user, limit)
+
+
 @router.get(
     "/orders/{order_id}",
     responses={
@@ -140,7 +157,8 @@ def get_order(
     user: Annotated[User, Depends(require_permission(Permission.VIEW_OWN_ORDERS))],
     session: Annotated[Session, Depends(get_session)],
 ) -> OrderDetailOut:
-    """FR-40: the order's current status and every transition so far, oldest first.
+    """FR-40, FR-28: the order's current status and every transition, price snapshot
+    version and refund so far, oldest first.
 
     The client polls this every P-POLL while the order is not finished. Another
     Student's order answers 404 and is logged as a security event (FR-7).

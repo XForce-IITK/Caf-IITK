@@ -21,6 +21,14 @@ part 'ordering_client.g.dart';
 abstract class OrderingClient {
   factory OrderingClient(Dio dio, {String? baseUrl}) = _OrderingClient;
 
+  /// List My Orders.
+  ///
+  /// FR-28: the caller's own orders, newest first, each with its latest price.
+  ///
+  /// Open one with GET /orders/{order_id} for every snapshot version and refund.
+  @GET('/api/v1/orders')
+  Future<List<OrderOut>> listMyOrders({@Query('limit') int? limit = 50});
+
   /// Place Order.
   ///
   /// FR-30, FR-33: reserve the portions and a seat, then take payment.
@@ -35,7 +43,8 @@ abstract class OrderingClient {
 
   /// Get Order.
   ///
-  /// FR-40: the order's current status and every transition so far, oldest first.
+  /// FR-40, FR-28: the order's current status and every transition, price snapshot.
+  /// version and refund so far, oldest first.
   ///
   /// The client polls this every P-POLL while the order is not finished. Another.
   /// Student's order answers 404 and is logged as a security event (FR-7).

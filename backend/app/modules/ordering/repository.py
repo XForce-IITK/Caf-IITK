@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, aliased
 
 from app.models.capacity import DailyInventory, Slot
@@ -272,6 +272,48 @@ class OrderRepository:
             )
             .execution_options(populate_existing=True)
         ).one_or_none()
+
+    def get_snapshots(self, order_id: uuid.UUID) -> list[PriceSnapshot]:
+        """Every price snapshot version of the order, v1 first (FR-27)."""
+        return list(
+            self.session.scalars(
+                select(PriceSnapshot)
+                .where(PriceSnapshot.order_id == order_id)
+                .order_by(PriceSnapshot.version)
+            )
+        )
+
+    def get_refund_payments(self, order_id: uuid.UUID) -> list[Payment]:
+        """Every refund recorded for the order as full rows, oldest first (FR-28)."""
+        return list(
+            self.session.scalars(
+                select(Payment)
+                .where(Payment.order_id == order_id, Payment.kind == PaymentKind.REFUND)
+                .order_by(Payment.created_at, Payment.id)
+            )
+        )
+
+    def list_student_orders(
+        self, student_id: uuid.UUID, limit: int
+    ) -> list[tuple[Order, PriceSnapshot]]:
+        """The Student's orders, newest first, each with its latest snapshot."""
+        latest = (
+            select(func.max(PriceSnapshot.version))
+            .where(PriceSnapshot.order_id == Order.id)
+            .correlate(Order)
+            .scalar_subquery()
+        )
+        rows = self.session.execute(
+            select(Order, PriceSnapshot)
+            .join(
+                PriceSnapshot,
+                (PriceSnapshot.order_id == Order.id) & (PriceSnapshot.version == latest),
+            )
+            .where(Order.student_id == student_id)
+            .order_by(Order.created_at.desc(), Order.id)
+            .limit(limit)
+        )
+        return [(order, snapshot) for order, snapshot in rows.tuples()]
 
     def latest_snapshot(self, order_id: uuid.UUID) -> PriceSnapshot:
         return self.session.scalars(
