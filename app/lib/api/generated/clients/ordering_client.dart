@@ -5,6 +5,7 @@
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
+import '../models/admin_cancel_order_request.dart';
 import '../models/cancel_order_request.dart';
 import '../models/cancelled_order_out.dart';
 import '../models/modification_quote_out.dart';
@@ -20,6 +21,20 @@ part 'ordering_client.g.dart';
 @RestApi()
 abstract class OrderingClient {
   factory OrderingClient(Dio dio, {String? baseUrl}) = _OrderingClient;
+
+  /// Admin Cancel Order.
+  ///
+  /// FR-38: cancel an ACCEPTED, PREPARING or READY order with a mandatory reason and a.
+  /// 100 % refund. The seat is always released; portions only from ACCEPTED (T6, T7, T9).
+  ///
+  /// `version` is the order version the Administrator saw. A repeat with the same key.
+  /// returns the same result; there is never a second refund.
+  @POST('/api/v1/admin/orders/{order_id}/cancel')
+  Future<CancelledOrderOut> adminCancelOrder({
+    @Path('order_id') required String orderId,
+    @Header('Idempotency-Key') required String idempotencyKey,
+    @Body() required AdminCancelOrderRequest body,
+  });
 
   /// Place Order.
   ///
