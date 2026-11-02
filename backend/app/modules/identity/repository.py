@@ -20,6 +20,19 @@ class UserRepository:
     def get_by_email(self, email: str) -> User | None:
         return self.session.scalars(select(User).where(User.email == email)).one_or_none()
 
+    def get_for_update(self, user_id: uuid.UUID) -> User | None:
+        return self.session.scalars(
+            select(User).where(User.id == user_id).with_for_update()
+        ).one_or_none()
+
+    def list_staff(self) -> list[User]:
+        """Kitchen Staff and Administrators, by name; Students are not listed."""
+        return list(
+            self.session.scalars(
+                select(User).where(User.role != Role.STUDENT).order_by(User.name, User.email)
+            )
+        )
+
     def add(self, *, name: str, email: str, password_hash: str, role: Role) -> User:
         user = User(name=name, email=email, password_hash=password_hash, role=role)
         self.session.add(user)
