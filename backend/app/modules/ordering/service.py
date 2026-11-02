@@ -277,7 +277,8 @@ class OrderService:
 
         if order.status is not OrderStatus.PENDING_PAYMENT:
             # The hold expired while we waited; the late result changes nothing (FR-34).
-            if may_have_charged:
+            # The sweeper queued the void when it expired the order.
+            if may_have_charged and not self.repo.has_void(order.id, None):
                 self._queue_void(reserved)
         elif approved:
             order.paid_paise = reserved.amount_paise
