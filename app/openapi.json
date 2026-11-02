@@ -1,6 +1,39 @@
 {
   "components": {
     "schemas": {
+      "AccountOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role",
+          "is_active"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
       "AdminCancelOrderRequest": {
         "description": "FR-38: the Administrator must say why; whitespace alone is no reason.",
         "properties": {
@@ -1652,6 +1685,40 @@
         "title": "SlotQueueOut",
         "type": "object"
       },
+      "StaffCreate": {
+        "additionalProperties": false,
+        "description": "FR-2: a Kitchen Staff or Administrator account, created by an Administrator.",
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password",
+          "role"
+        ],
+        "title": "StaffCreate",
+        "type": "object"
+      },
       "TokenPair": {
         "properties": {
           "access_token": {
@@ -2446,6 +2513,204 @@
         "summary": "Configure Service Day",
         "tags": [
           "slots"
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "description": "UC-03: every Kitchen Staff and Administrator account, active or not, by name.",
+        "operationId": "list_staff_accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  },
+                  "title": "Response List Staff Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Staff Accounts",
+        "tags": [
+          "identity"
+        ]
+      },
+      "post": {
+        "description": "FR-2: create a Kitchen Staff or Administrator account. Students register\nthemselves, so role STUDENT is refused with 422.",
+        "operationId": "create_staff_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator creates accounts"
+          },
+          "409": {
+            "description": "Email already registered"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Staff Account",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/deactivate": {
+      "post": {
+        "description": "FR-3: the account can no longer log in or refresh, and its access tokens are\nrefused at once. Deactivating an inactive account changes nothing.",
+        "operationId": "deactivate_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages accounts"
+          },
+          "404": {
+            "description": "No such account"
+          },
+          "409": {
+            "description": "Administrators cannot deactivate or reactivate their own account"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Deactivate Account",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/reactivate": {
+      "post": {
+        "description": "FR-3: the account can log in again; its old refresh tokens stay revoked.",
+        "operationId": "reactivate_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages accounts"
+          },
+          "404": {
+            "description": "No such account"
+          },
+          "409": {
+            "description": "Administrators cannot deactivate or reactivate their own account"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reactivate Account",
+        "tags": [
+          "identity"
         ]
       }
     },

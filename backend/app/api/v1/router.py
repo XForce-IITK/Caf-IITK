@@ -9,6 +9,7 @@ from fastapi import APIRouter
 from app.modules.agent.router import router as agent_router
 from app.modules.audit.router import router as audit_router
 from app.modules.catalogue.router import router as catalogue_router
+from app.modules.identity.router import admin_router as accounts_router
 from app.modules.identity.router import router as identity_router
 from app.modules.inventory.router import router as inventory_router
 from app.modules.kitchen.router import router as kitchen_router
@@ -21,6 +22,7 @@ from app.modules.slots.router import router as slots_router
 api_router = APIRouter(prefix="/api/v1")
 for module_router in (
     identity_router,
+    accounts_router,
     catalogue_router,
     inventory_router,
     slots_router,
