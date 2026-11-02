@@ -1,6 +1,29 @@
 {
   "components": {
     "schemas": {
+      "AdminCancelOrderRequest": {
+        "description": "FR-38: the Administrator must say why; whitespace alone is no reason.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "AdminCancelOrderRequest",
+        "type": "object"
+      },
       "AgentRunDetailOut": {
         "description": "FR-63: the run, its report (FR-52), its proposals and its tool-call log (FR-62).",
         "properties": {
@@ -2102,6 +2125,82 @@
         "summary": "Onboard Item",
         "tags": [
           "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/cancel": {
+      "post": {
+        "description": "FR-38: cancel an ACCEPTED, PREPARING or READY order with a mandatory reason and a\n100 % refund. The seat is always released; portions only from ACCEPTED (T6, T7, T9).\n\n`version` is the order version the Administrator saw. A repeat with the same key\nreturns the same result; there is never a second refund.",
+        "operationId": "admin_cancel_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCancelOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator cancels any order"
+          },
+          "404": {
+            "description": "No such order"
+          },
+          "409": {
+            "description": "The order is PENDING_PAYMENT or terminal, the version is stale (current status, version and refund in the body), or the original request with this key is still in progress"
+          },
+          "422": {
+            "description": "No reason given, or the idempotency key was already used with a different request"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was changed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Cancel Order",
+        "tags": [
+          "ordering"
         ]
       }
     },
