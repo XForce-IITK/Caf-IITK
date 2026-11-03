@@ -17,8 +17,9 @@ from app.core import clock
 from app.core.security import create_access_token
 from app.db.session import get_session
 from app.models.capacity import DailyInventory, ServiceDay, Slot
-from app.models.catalogue import MenuItem
+from app.models.catalogue import DiscountRule, MenuItem
 from app.models.enums import (
+    DiscountScope,
     ItemCategory,
     ItemStatus,
     OrderStatus,
@@ -450,6 +451,47 @@ def test_price_differing_from_the_quote_is_409_with_a_fresh_quote(
 
     assert response.status_code == 409, response.text
     assert response.json()["detail"]["quote"]["payable_paise"] == PAYABLE
+    assert _holds(engine, menu) == (0, 0, 0)
+    assert _orders(engine) == []
+    assert gateway.authorised == []
+
+
+def test_tc_us20_ac1_price_changed_after_the_quote_is_409_with_a_fresh_quote(
+    api: TestClient, engine: Engine, menu: dict[str, Any], gateway: FakePaymentGateway
+) -> None:
+    # A 5 % discount on everything makes the Rs 80 Thali the AC's Rs 76 quote.
+    _add(
+        engine,
+        DiscountRule(
+            id=uuid.uuid4(),
+            start_time=time(12, 0),
+            end_time=time(13, 0),
+            pct=5,
+            scope=DiscountScope.ALL,
+        ),
+    )
+    student = _user(engine)
+    cart = {
+        "slot_id": str(menu["slot"].id),
+        "lines": [{"item_id": str(menu["thali"].id), "qty": 1}],
+    }
+    quoted = api.post("/api/v1/quotes", json=cart, headers=_headers(student)).json()
+    assert quoted["payable_paise"] == 7600
+    admin = _user(engine, Role.ADMIN)
+    changed = api.patch(
+        f"/api/v1/admin/items/{menu['thali'].id}",
+        json={"price_paise": 9000},
+        headers=_headers(admin),
+    )
+    assert changed.status_code == 200, changed.text
+
+    response = api.post(URL, json=cart | {"quoted_payable_paise": 7600}, headers=_headers(student))
+
+    assert response.status_code == 409, response.text
+    fresh = response.json()["detail"]["quote"]
+    assert fresh["lines"][0]["unit_price_paise"] == 9000
+    assert fresh["payable_paise"] != 7600
+    assert fresh == api.post("/api/v1/quotes", json=cart, headers=_headers(student)).json()
     assert _holds(engine, menu) == (0, 0, 0)
     assert _orders(engine) == []
     assert gateway.authorised == []
