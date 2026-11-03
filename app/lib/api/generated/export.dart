@@ -69,6 +69,7 @@ export 'models/role.dart';
 export 'models/service_day_config.dart';
 export 'models/service_day_out.dart';
 export 'models/slot_availability_out.dart';
+export 'models/slot_capacity_change.dart';
 export 'models/slot_list_out.dart';
 export 'models/slot_out.dart';
 export 'models/slot_queue_out.dart';

@@ -1,5 +1,7 @@
 """US-14 (CAFIITK-139, FR-17) acceptance tests TC-US14-AC1..AC2 via PUT /admin/service-days.
 
+Also US-15 AC2 (CAFIITK-140, FR-18): a reconfiguration may not remove a slot with orders.
+
 Also covers US-04 AC3 on the real slot-configuration endpoint, and checks that
 re-configuring a day never breaks inventory (CAFIITK-136) or existing orders.
 """
@@ -179,7 +181,7 @@ def _order_on_first_slot(engine: Engine, status: OrderStatus) -> None:
 
 
 @pytest.mark.parametrize("status", [OrderStatus.ACCEPTED, OrderStatus.CANCELLED])
-def test_reconfiguring_a_day_with_orders_is_409_and_changes_nothing(
+def test_tc_us15_ac2_window_change_removing_a_slot_with_orders_is_409(
     db_client: TestClient, engine: Engine, admin: dict[str, str], status: OrderStatus
 ) -> None:
     db_client.put(URL, json=LUNCH, headers=admin)
@@ -187,13 +189,65 @@ def test_reconfiguring_a_day_with_orders_is_409_and_changes_nothing(
     # Even a CANCELLED order still points at its slot, so the slot must stay.
     _order_on_first_slot(engine, status)
 
-    response = db_client.put(URL, json=LUNCH | {"default_capacity": 5}, headers=admin)
+    # The 12:00 slot would no longer exist.
+    response = db_client.put(URL, json=LUNCH | {"window_start": "12:30"}, headers=admin)
 
     assert response.status_code == 409
+    assert "12:00 slot has orders" in response.text
     assert [(s.id, s.capacity) for s in _slots(engine)] == before
     day = _day(engine)
     assert day is not None
-    assert day.default_capacity == 30
+    assert day.window_start == time(12, 0)
+
+
+def test_changing_the_slot_length_under_a_slot_with_orders_is_409(
+    db_client: TestClient, engine: Engine, admin: dict[str, str]
+) -> None:
+    db_client.put(URL, json=LUNCH, headers=admin)
+    _order_on_first_slot(engine, OrderStatus.ACCEPTED)
+
+    # 12:00-12:30 replaces 12:00-12:15, so the booked slot would disappear.
+    response = db_client.put(URL, json=LUNCH | {"slot_len_min": 30}, headers=admin)
+
+    assert response.status_code == 409
+    assert len(_slots(engine)) == 10
+
+
+def test_reconfiguring_a_day_with_orders_keeps_their_slots(
+    db_client: TestClient, engine: Engine, admin: dict[str, str]
+) -> None:
+    db_client.put(URL, json=LUNCH, headers=admin)
+    first = _slots(engine)[0]
+    _order_on_first_slot(engine, OrderStatus.ACCEPTED)
+    with Session(engine) as session, session.begin():
+        session.execute(update(Slot).where(Slot.id == first.id).values(booked=1))
+
+    response = db_client.put(
+        URL, json=LUNCH | {"window_end": "13:00", "default_capacity": 20}, headers=admin
+    )
+
+    assert response.status_code == 200, response.text
+    slots = _slots(engine)
+    assert len(slots) == 4
+    assert (slots[0].id, slots[0].booked) == (first.id, 1)
+    assert {s.capacity for s in slots} == {20}
+    assert [s["id"] for s in response.json()["slots"]] == [str(s.id) for s in slots]
+
+
+def test_reconfigured_capacity_below_a_kept_slots_bookings_is_409(
+    db_client: TestClient, engine: Engine, admin: dict[str, str]
+) -> None:
+    db_client.put(URL, json=LUNCH, headers=admin)
+    first = _slots(engine)[0]
+    _order_on_first_slot(engine, OrderStatus.ACCEPTED)
+    with Session(engine) as session, session.begin():
+        session.execute(update(Slot).where(Slot.id == first.id).values(booked=25))
+
+    response = db_client.put(URL, json=LUNCH | {"default_capacity": 20}, headers=admin)
+
+    assert response.status_code == 409
+    assert "25 seats booked" in response.text
+    assert {s.capacity for s in _slots(engine)} == {30}
 
 
 def test_order_placed_during_reconfigure_is_caught_by_the_foreign_key(
@@ -201,8 +255,8 @@ def test_order_placed_during_reconfigure_is_caught_by_the_foreign_key(
 ) -> None:
     db_client.put(URL, json=LUNCH, headers=admin)
     _order_on_first_slot(engine, OrderStatus.ACCEPTED)
-    # Simulate the order arriving after our check but before the delete.
-    monkeypatch.setattr(SlotRepository, "day_has_orders", lambda self, d: False)
+    # Simulate an order the check missed: deleting its slot must still fail.
+    monkeypatch.setattr(SlotRepository, "slot_ids_with_orders", lambda self, ids: set())
 
     response = db_client.put(URL, json=LUNCH | {"default_capacity": 5}, headers=admin)
 
@@ -266,6 +320,7 @@ def test_configuration_is_audited_with_before_and_after(
         "slot_len_min": 15,
         "default_capacity": 30,
         "slots": 10,
+        "kept_with_orders": 0,
     }
     assert second.before is not None and second.before["default_capacity"] == 30
     assert second.after is not None and second.after["default_capacity"] == 20
