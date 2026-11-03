@@ -20,6 +20,12 @@ class Settings(BaseSettings):
 
     env: Literal["development", "test", "production"] = "development"
     database_url: str = "postgresql+psycopg://caf:caf@localhost:5432/caf"
+    # Connections each process may hold (app/db/session.py), with no overflow. Every
+    # caf-api worker process and caf-worker has its own pool, so processes x this must
+    # stay under the database's max_connections. 5 measured best of 5, 10 and 20 for
+    # the order rush (Performance-Report.md section 3): fewer threads busy at once
+    # means less waiting for the GIL, so the hot inventory row is held for less time.
+    db_pool_size: int = 5
     jwt_secret: str = DEFAULT_JWT_SECRET
     mockpay_url: str = "http://localhost:8001"
     # How long mockpay holds an authorisation in "timeout" mode; keep above pay_timeout_s.

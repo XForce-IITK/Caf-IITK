@@ -12,7 +12,9 @@ from typing import Any
 METRICS_DIR = os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", "/tmp/caf-metrics")
 
 bind = "0.0.0.0:8000"
-workers = 2
+# Each process runs Python on one core at a time, so the host's CPUs decide this
+# (CAFIITK-189). Each process also opens CAF_DB_POOL_SIZE connections.
+workers = int(os.environ.get("WEB_CONCURRENCY", "2"))
 worker_class = "uvicorn.workers.UvicornWorker"
 
 
