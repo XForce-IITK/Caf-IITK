@@ -134,3 +134,83 @@ the server.
 
 Pending CAFIITK-190. The same command will be run against the deployed stack, with the load
 generator off the instance, and an LLM agent run timed with the key configured.
+
+## 5. US-31 acceptance (CAFIITK-156)
+
+US-31 ("Ordering stays fast at peak") is accepted against NFR-8, NFR-9 and NFR-12. Its two
+criteria are named tests in `backend/tests/test_us31_peak.py`. They run the workloads above
+at full scale and assert the targets. They need a running stack, so they are skipped unless
+`CAF_PERF_BASE_URL` and `CAF_PERF_DATABASE_URL` are set; `tests/test_perf.py` keeps the
+harness itself tested in CI at 5 % scale.
+
+| Test | Criterion | Workloads it runs |
+|---|---|---|
+| `test_tc_us31_ac1_order_creation_p95_and_p99_with_50_clients` | AC1: 50 concurrent clients create orders for one item and slot; p95 ≤ 500 ms, p99 ≤ 1 s | NFR-8, and the order burst of NFR-12 |
+| `test_tc_us31_ac2_reads_p95_with_100_users` | AC2: 100 concurrent users read the menu, slots, history and queue; p95 ≤ 200 ms | NFR-9 |
+
+### 5.1 Run: Docker Compose on an Apple M2 (4 Nov 2026)
+
+**Environment.**
+- Commit: `82ef554` (`develop`, after CAFIITK-188), before any CAFIITK-189 change.
+- Host: Apple M2 (8 cores) with 8 GB RAM, macOS. Docker 29.5 with 4 CPUs and 5.8 GB.
+- Stack: the same Compose stack as Run 1, with `caf-api` under gunicorn with 2 Uvicorn workers.
+- mockpay approves with no delay. The load generator ran on the same machine as the stack.
+
+**Command** (from `backend/`):
+
+```bash
+CAF_JWT_SECRET=<the stack's secret> \
+CAF_PERF_BASE_URL=http://localhost:8000 CAF_PERF_MOCKPAY_URL=http://localhost:8001 \
+CAF_PERF_DATABASE_URL=postgresql+psycopg://caf:<password>@localhost:5432/caf \
+    .venv/bin/pytest tests/test_us31_peak.py -s
+```
+
+**Results (client side).** Both tests failed.
+
+| Criterion | Workload | Requests | p50 ms | p95 ms | p99 ms | Errors | Met |
+|---|---|---|---|---|---|---|---|
+| AC1 | NFR-8: 50 clients, 200 orders, one item and slot | 200 | 389 | 737 | 847 | 0 | **no** (p95) |
+| AC1 | NFR-12 orders: 200 by 50 clients, 100 readers alongside | 200 | 708 | 1037 | 1333 | 0 | **no**; burst 4.9 s, within 60 s |
+| AC2 | NFR-9 menu, 100 readers for 30 s | 1588 | 275 | 1795 | 2271 | 0 | **no** |
+| AC2 | NFR-9 slots | 1537 | 272 | 1846 | 2308 | 0 | **no** |
+| AC2 | NFR-9 order history | 1512 | 270 | 1762 | 2283 | 0 | **no** |
+| AC2 | NFR-9 kitchen queue | 1540 | 290 | 1777 | 2466 | 0 | **no** |
+
+The reads measured during NFR-12 also missed their target, with p95 1035–1397 ms.
+
+**Server side (from /metrics).**
+
+| Workload | Route or lock | Count | Server mean ms | Server p95 (bucket) |
+|---|---|---|---|---|
+| NFR-8 | `POST /api/v1/orders` | 200 | 390 | ≤ 750 |
+| NFR-8 | lock wait: `daily_inventory` | 200 | 190 | ≤ 500 |
+| NFR-9 | `GET /api/v1/menu`, `/slots`, `/orders`, `/kitchen/queue` | 1512–1588 each | 57–67 | ≤ 250 |
+| NFR-12 | `POST /api/v1/orders` | 200 | 630 | ≤ 2500 |
+
+### 5.2 What this run adds
+
+1. **Every request succeeded.** All 7,811 measured requests were answered, with no errors.
+   The system stays correct at peak; the gap is latency only. This agrees with Run 1.
+2. **AC1 is close.** On this machine NFR-8's p99 (847 ms) meets its target and p95 misses by
+   237 ms. The server's own mean for an order is 390 ms, about half of it spent waiting for
+   the single `daily_inventory` row (190 ms). That is the hot-row queue named in §3 (4).
+3. **AC2's time is spent before the application.** During NFR-9 the server measured each read
+   at about 60 ms on average, with every bucket p95 ≤ 250 ms. The client saw p50 ≈ 270 ms
+   and p95 ≈ 1.8 s. Most of each read's latency therefore lies between the client and the
+   application:
+   - the gunicorn and Uvicorn accept queue;
+   - the TCP connections;
+   - or the load generator itself, one Python process driving 100 users on the same 8 GB
+     machine as the stack.
+
+   This agrees with §3 (1)–(2). For CAFIITK-189, it points at worker count and at running
+   the load generator on another machine before any query is tuned.
+
+### 5.3 Status of US-31
+
+**Not met** on the local stack: AC1 and AC2 both fail. CAFIITK-156 delivers the acceptance
+tests and this measurement. The criteria should be measured again with the same command:
+- after CAFIITK-189's changes;
+- and on AWS (CAFIITK-190), with the load generator off the instance.
+
+US-31 can be closed only when both tests pass there.
