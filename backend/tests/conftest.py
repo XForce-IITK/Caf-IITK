@@ -30,6 +30,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 # A full-length signing key, so tests exercise JWTs as configured in production.
 os.environ.setdefault("CAF_JWT_SECRET", "test-secret-" + "x" * 32)
+# Importing app.main above already built the app and cached the settings with the
+# default key; drop them so every test reads the key set here.
+get_settings.cache_clear()
 
 # Colima (macOS) exposes Docker on a per-user socket; point testcontainers at it.
 _colima_socket = Path.home() / ".colima" / "default" / "docker.sock"

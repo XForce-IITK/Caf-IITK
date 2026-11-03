@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 
-from app.core.config import DEFAULT_JWT_SECRET, Settings, get_settings
+from app.core.config import DEFAULT_JWT_SECRET, MIN_JWT_SECRET_BYTES, Settings, get_settings
 from app.core.security import (
     InvalidTokenError,
     create_access_token,
@@ -15,6 +15,14 @@ from app.core.security import (
 from app.models.enums import Role
 
 USER_ID = uuid.uuid4()
+
+
+def test_the_suite_signs_tokens_with_a_full_length_key() -> None:
+    """CAFIITK-201: conftest's test key must win over the default cached at import."""
+    secret = get_settings().jwt_secret
+
+    assert secret != DEFAULT_JWT_SECRET
+    assert len(secret.encode()) >= MIN_JWT_SECRET_BYTES
 
 
 def test_access_token_round_trips_the_user_id() -> None:
