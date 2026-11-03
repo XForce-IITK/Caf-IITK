@@ -86,6 +86,24 @@ def edit_item(
     return _item_change(lambda: service.edit_item(admin, item_id, body))
 
 
+@router.delete(
+    "/admin/items/{item_id}",
+    responses={
+        403: {"description": "Only the Administrator removes items"},
+        404: {"description": "No such menu item"},
+    },
+)
+def remove_item(
+    item_id: uuid.UUID, admin: AdminMenuUser, session: Annotated[Session, Depends(get_session)]
+) -> ItemOut:
+    """FR-10 / US-08: withdraw a dish; it is set to REMOVED, never deleted.
+
+    It leaves the menu and new orders for it get 409; orders already placed proceed.
+    """
+    service = CatalogueService(session)
+    return _item_change(lambda: service.remove_item(admin, item_id))
+
+
 _FLAG_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"description": "Only Kitchen Staff and the Administrator flag items"},
     404: {"description": "No such menu item"},
