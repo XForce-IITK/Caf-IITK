@@ -1,6 +1,6 @@
 """caf-api: the FastAPI application. Run with `uvicorn app.main:app`."""
 
-from fastapi import FastAPI, Request, status
+from fastapi import Depends, FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +15,7 @@ from app.core.context import RequestContextMiddleware
 from app.core.errors import add_error_handlers
 from app.core.logs import configure_logging
 from app.core.metrics import MetricsMiddleware
+from app.core.validation import reject_unknown_query_params
 
 LOCAL_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
 
@@ -40,7 +41,13 @@ async def _validation_failed(request: Request, exc: Exception) -> JSONResponse:
 
 def create_app() -> FastAPI:
     configure_logging()
-    app = FastAPI(title="Caf@IITK API", version="0.1.0", generate_unique_id_function=_operation_id)
+    app = FastAPI(
+        title="Caf@IITK API",
+        version="0.1.0",
+        generate_unique_id_function=_operation_id,
+        # NFR-22: an unknown query parameter is a 422, like an unknown body field.
+        dependencies=[Depends(reject_unknown_query_params)],
+    )
     settings = get_settings()
     # NFR-27: only the client's origin may call the API from a browser.
     app.add_middleware(
