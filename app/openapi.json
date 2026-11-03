@@ -1664,6 +1664,23 @@
         "title": "SlotAvailabilityOut",
         "type": "object"
       },
+      "SlotCapacityChange": {
+        "additionalProperties": false,
+        "description": "FR-18: one slot's new seat capacity, within the same bounds as the default.",
+        "properties": {
+          "capacity": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capacity"
+        ],
+        "title": "SlotCapacityChange",
+        "type": "object"
+      },
       "SlotListOut": {
         "properties": {
           "service_date": {
@@ -2694,7 +2711,7 @@
     },
     "/api/v1/admin/service-days/{service_date}": {
       "put": {
-        "description": "FR-17 / US-14: configure a service date's window and generate its slots.",
+        "description": "FR-17 / US-14: configure a service date's window and generate its slots.\n\nSlots that orders reference are kept; FR-18 refuses a change that would remove one.",
         "operationId": "configure_service_day",
         "parameters": [
           {
@@ -2733,7 +2750,7 @@
             "description": "Only the Administrator configures service windows"
           },
           "409": {
-            "description": "Orders already reference this day's slots"
+            "description": "A slot with orders would be removed, or its capacity would fall below its booked seats"
           },
           "422": {
             "description": "Invalid window, capacity, or a slot length that does not divide it"
@@ -2745,6 +2762,67 @@
           }
         ],
         "summary": "Configure Service Day",
+        "tags": [
+          "slots"
+        ]
+      }
+    },
+    "/api/v1/admin/slots/{slot_id}": {
+      "patch": {
+        "description": "FR-18 / US-15: change one slot's capacity without dropping booked students.",
+        "operationId": "change_slot_capacity",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Slot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotCapacityChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator changes slot capacity"
+          },
+          "404": {
+            "description": "No such slot"
+          },
+          "409": {
+            "description": "The capacity is below the seats already booked"
+          },
+          "422": {
+            "description": "Capacity outside 1-100, or an unknown field"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Slot Capacity",
         "tags": [
           "slots"
         ]
