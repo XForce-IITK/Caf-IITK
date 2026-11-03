@@ -1,11 +1,13 @@
-"""Service window and pickup-slot configuration (FR-17, US-14)."""
+"""Service window and pickup-slot configuration (FR-17, FR-18; US-14, US-15)."""
 
+import uuid
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.models.capacity import Slot
 from app.models.identity import User
 from app.modules.audit.service import write_audit
 from app.modules.slots.domain import not_bookable_reason
@@ -31,8 +33,27 @@ class SlotLengthError(Exception):
         )
 
 
-class DayHasOrdersError(Exception):
-    """Slots of this day are referenced by orders, so they cannot be regenerated."""
+class SlotNotFoundError(Exception):
+    pass
+
+
+class SlotHasOrdersError(Exception):
+    """A reconfiguration would remove a slot that orders reference (FR-18, US-15 AC2)."""
+
+    def __init__(self, starts_at: datetime | None = None) -> None:
+        which = f"the {starts_at.astimezone(IST):%H:%M} slot" if starts_at else "a slot"
+        super().__init__(f"{which} has orders and would be removed")
+
+
+class CapacityBelowBookedError(Exception):
+    """A capacity below a slot's booked seats (FR-18, US-15 AC1)."""
+
+    def __init__(self, slot: Slot, capacity: int) -> None:
+        self.slot_id = slot.id
+        super().__init__(
+            f"the {slot.starts_at.astimezone(IST):%H:%M} slot has {slot.booked} seats booked; "
+            f"capacity {capacity} is too low"
+        )
 
 
 def slot_bounds(
@@ -58,9 +79,10 @@ class SlotService:
     ) -> ServiceDayOut:
         """FR-17: set the window, slot length and capacity, and (re)generate the slots.
 
-        Re-configuring replaces the slots only while no order references any of them;
-        otherwise nothing changes (changing a live slot's capacity is US-15). The day
-        row is updated in place so daily_inventory rows that reference it survive.
+        A slot that orders reference is kept, with its id and bookings, and given the
+        new default capacity; the configuration is refused if it would remove such a
+        slot or take its capacity below its booked seats (FR-18). Every other slot is
+        regenerated. The day row is updated in place so daily_inventory rows survive.
         """
         try:
             with self.session.begin():
@@ -74,17 +96,20 @@ class SlotService:
                     default_capacity=config.default_capacity,
                 )
                 before = None
+                kept: list[Slot] = []
                 if not created:
-                    if self.repo.day_has_orders(service_date):
-                        raise DayHasOrdersError
                     before = _day_summary(
                         day.window_start, day.window_end, day.slot_len_min, day.default_capacity
                     )
+                    kept = self._keep_slots_with_orders(service_date, bounds, config)
                     day.window_start = config.window_start
                     day.window_end = config.window_end
                     day.slot_len_min = slot_len
                     day.default_capacity = config.default_capacity
-                slots = self.repo.replace_slots(service_date, bounds, config.default_capacity)
+                taken = {(s.starts_at, s.ends_at) for s in kept}
+                new = [b for b in bounds if b not in taken]
+                slots = kept + self.repo.add_slots(service_date, new, config.default_capacity)
+                slots.sort(key=lambda s: s.starts_at)
                 write_audit(
                     self.session,
                     action="SERVICE_DAY_CONFIGURED",
@@ -96,12 +121,12 @@ class SlotService:
                     after=_day_summary(
                         config.window_start, config.window_end, slot_len, config.default_capacity
                     )
-                    | {"slots": len(slots)},
+                    | {"slots": len(slots), "kept_with_orders": len(kept)},
                 )
         except IntegrityError as exc:
-            # An order was placed on one of the old slots while we were replacing them;
-            # its foreign key stopped the delete.
-            raise DayHasOrdersError from exc
+            # Defence in depth: the slot locks should make this unreachable, but an
+            # order's foreign key would stop us deleting a slot it references.
+            raise SlotHasOrdersError from exc
 
         return ServiceDayOut(
             service_date=service_date,
@@ -111,6 +136,57 @@ class SlotService:
             default_capacity=config.default_capacity,
             slots=[SlotOut.model_validate(s) for s in slots],
         )
+
+    def _keep_slots_with_orders(
+        self,
+        service_date: date,
+        bounds: list[tuple[datetime, datetime]],
+        config: ServiceDayConfig,
+    ) -> list[Slot]:
+        """Delete the day's slots that no order references; return the others, re-capacitated.
+
+        Raises before changing anything if a referenced slot is not in the new bounds or
+        has more seats booked than the new capacity.
+        """
+        current = self.repo.lock_slots(service_date)
+        with_orders = self.repo.slot_ids_with_orders([s.id for s in current])
+        kept = sorted((s for s in current if s.id in with_orders), key=lambda s: s.starts_at)
+        wanted = set(bounds)
+        for slot in kept:
+            if (slot.starts_at, slot.ends_at) not in wanted:
+                raise SlotHasOrdersError(slot.starts_at)
+            if slot.booked > config.default_capacity:
+                raise CapacityBelowBookedError(slot, config.default_capacity)
+        for slot in kept:
+            slot.capacity = config.default_capacity
+        self.repo.delete_slots([s.id for s in current if s.id not in with_orders])
+        return kept
+
+    def change_capacity(self, admin: User, slot_id: uuid.UUID, capacity: int) -> Slot:
+        """FR-18 / US-15: change one slot's capacity; never below its booked seats.
+
+        The slot is locked as order placement locks it, so a seat booked concurrently is
+        counted before the check. Setting the current capacity again writes nothing.
+        """
+        with self.session.begin():
+            slot = self.repo.lock_slot(slot_id)
+            if slot is None:
+                raise SlotNotFoundError
+            if capacity < slot.booked:
+                raise CapacityBelowBookedError(slot, capacity)
+            if capacity != slot.capacity:
+                write_audit(
+                    self.session,
+                    action="SLOT_CAPACITY_CHANGED",
+                    entity_type="slot",
+                    entity_id=str(slot.id),
+                    actor_id=str(admin.id),
+                    actor_role=admin.role.value,
+                    before={"capacity": slot.capacity, "booked": slot.booked},
+                    after={"capacity": capacity, "booked": slot.booked},
+                )
+                slot.capacity = capacity
+            return slot
 
     def browse_slots(self, service_date: date, now: datetime) -> SlotListOut:
         """FR-19 / US-16: the date's slots with remaining seats and whether each is bookable."""

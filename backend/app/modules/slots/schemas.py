@@ -29,6 +29,14 @@ class ServiceDayConfig(BaseModel):
         return self
 
 
+class SlotCapacityChange(BaseModel):
+    """FR-18: one slot's new seat capacity, within the same bounds as the default."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    capacity: Annotated[int, Field(ge=MIN_CAPACITY, le=MAX_CAPACITY)]
+
+
 class SlotOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
