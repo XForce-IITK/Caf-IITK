@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from app.core.metrics import counts_order_outcome
 from app.models.capacity import Slot
 from app.models.enums import (
     ModificationStatus,
@@ -123,6 +124,7 @@ class ModifyService(OrderService):
             self._deny(actor_id, actor_role, order_id, "quote_modification")
             raise
 
+    @counts_order_outcome("modify")
     def modify(
         self,
         student: User,

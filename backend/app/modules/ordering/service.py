@@ -18,6 +18,7 @@ from datetime import datetime, time, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.clock import IST
+from app.core.metrics import counts_order_outcome
 from app.models.capacity import DailyInventory
 from app.models.catalogue import MenuItem
 from app.models.enums import OrderStatus, PaymentCause, PaymentKind, PaymentStatus
@@ -157,6 +158,7 @@ class OrderService:
         self.repo = OrderRepository(session)
         self.idempotency = IdempotencyService(session)
 
+    @counts_order_outcome("place")
     def place(
         self, student: User, request: PlaceOrderRequest, idempotency_key: str, now: datetime
     ) -> OrderOut:
@@ -306,6 +308,7 @@ class OrderService:
                 self._queue_void(reserved)
         return self._view(order.id)
 
+    @counts_order_outcome("cancel")
     def cancel(
         self,
         student: User,
@@ -393,6 +396,7 @@ class OrderService:
         self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
         return pending
 
+    @counts_order_outcome("admin_cancel")
     def admin_cancel(
         self,
         admin: User,

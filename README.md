@@ -20,8 +20,12 @@ Requirements and design: `Deliverables/` (SRS v2.0 and SADD).
 ```sh
 cp .env.example .env          # then set CAF_JWT_SECRET
 docker compose up --build
-curl localhost:8000/health    # {"status":"ok"}
+curl localhost:8000/health    # {"status":"ok"}     liveness
+curl localhost:8000/ready     # {"status":"ready"}  database reachable, else 503
+curl localhost:8000/metrics   # Prometheus text format
 ```
+
+`docker compose ps` shows `api` as healthy only while `/ready` succeeds (NFR-31).
 
 API docs: http://localhost:8000/docs
 

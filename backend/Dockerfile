@@ -12,11 +12,11 @@ COPY pyproject.toml ./
 COPY app ./app
 RUN pip install .
 
-COPY alembic.ini ./
+COPY alembic.ini gunicorn.conf.py ./
 COPY alembic ./alembic
 
 RUN useradd --create-home caf
 USER caf
 
 EXPOSE 8000
-CMD ["gunicorn", "app.main:app", "-k", "uvicorn.workers.UvicornWorker", "-w", "2", "-b", "0.0.0.0:8000"]
+CMD ["gunicorn", "app.main:app", "-c", "gunicorn.conf.py"]
