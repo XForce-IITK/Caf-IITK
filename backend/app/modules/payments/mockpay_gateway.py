@@ -8,6 +8,7 @@ import httpx
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+from app.core import context
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.modules.payments.gateway import (
@@ -65,10 +66,21 @@ class MockpayGateway:
             raise PaymentGatewayError(f"mockpay {path} answered {response.status_code}")
 
 
+def _forward_correlation_id(request: httpx.Request) -> None:
+    correlation_id = context.correlation_id()
+    if correlation_id is not None:
+        request.headers[context.HEADER] = correlation_id
+
+
 @lru_cache
 def get_mockpay_client() -> httpx.Client:
     settings = get_settings()
-    return httpx.Client(base_url=settings.mockpay_url, timeout=settings.pay_timeout_s)
+    return httpx.Client(
+        base_url=settings.mockpay_url,
+        timeout=settings.pay_timeout_s,
+        # NFR-29: mockpay logs the payment under the same correlation ID.
+        event_hooks={"request": [_forward_correlation_id]},
+    )
 
 
 def get_payment_gateway(session: Annotated[Session, Depends(get_session)]) -> PaymentGateway:

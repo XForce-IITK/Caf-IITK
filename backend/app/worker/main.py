@@ -16,6 +16,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import Engine
 from sqlalchemy.exc import DBAPIError
 
+from app.core import context
+from app.core.logs import configure_logging
 from app.worker.jobs import JOBS, Job, all_jobs
 from app.worker.leader import LeaderLock
 
@@ -28,11 +30,13 @@ class LostLeadershipError(RuntimeError):
 
 def _guarded(job: Job) -> Any:
     def run() -> None:
-        try:
-            job.func()
-        except Exception:
-            # One failing run must not stop the job or the worker; the next interval retries.
-            log.exception("job %s failed", job.name)
+        # NFR-29: one correlation ID per job run, on its log lines and audit rows.
+        with context.correlation():
+            try:
+                job.func()
+            except Exception:
+                # One failing run must not stop the job or the worker; the next interval retries.
+                log.exception("job %s failed", job.name)
 
     return run
 
@@ -110,7 +114,7 @@ class Worker:
 def main() -> int:
     from app.db.session import get_engine
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging()
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop.set())

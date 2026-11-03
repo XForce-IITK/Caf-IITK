@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core import context
 from app.core.config import get_settings
 from app.core.security import InvalidTokenError, decode_access_token
 from app.db.session import get_session
@@ -43,6 +44,7 @@ def get_current_user(
     session.commit()
     if user is None or not user.is_active:
         raise _UNAUTHENTICATED
+    context.set_user(user.id)
     return user
 
 

@@ -16,6 +16,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.config import Settings, get_settings
+from app.core.context import RequestContextMiddleware
+from app.core.logs import configure_logging
 from app.mockpay.ledger import AuthStatus, Ledger, LedgerConflictError
 
 Reference = Annotated[str, Field(min_length=1, max_length=100)]
@@ -70,7 +72,10 @@ class RefundOut(BaseModel):
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging()
     app = FastAPI(title="Caf@IITK mockpay", version="0.1.0")
+    # Logs the caf-api request's X-Request-ID with each payment call (NFR-29).
+    app.add_middleware(RequestContextMiddleware)
     ledger = Ledger()
     app.state.outcome = Outcome()
 
