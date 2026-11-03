@@ -23,6 +23,14 @@ abstract class CatalogueClient {
   @POST('/api/v1/admin/items')
   Future<ItemOut> onboardItem({@Body() required ItemCreate body});
 
+  /// Remove Item.
+  ///
+  /// FR-10 / US-08: withdraw a dish; it is set to REMOVED, never deleted.
+  ///
+  /// It leaves the menu and new orders for it get 409; orders already placed proceed.
+  @DELETE('/api/v1/admin/items/{item_id}')
+  Future<ItemOut> removeItem({@Path('item_id') required String itemId});
+
   /// Edit Item.
   ///
   /// FR-9 / US-07: change an item's description, category or price.
