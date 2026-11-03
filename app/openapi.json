@@ -35,6 +35,7 @@
         "type": "object"
       },
       "AdminCancelOrderRequest": {
+        "additionalProperties": false,
         "description": "FR-38: the Administrator must say why; whitespace alone is no reason.",
         "properties": {
           "reason": {
@@ -423,6 +424,7 @@
         "type": "object"
       },
       "CancelOrderRequest": {
+        "additionalProperties": false,
         "description": "The order version the Student saw when confirming (NFR-5).",
         "properties": {
           "version": {
@@ -1746,6 +1748,7 @@
         "type": "object"
       },
       "RejectRequest": {
+        "additionalProperties": false,
         "properties": {
           "reason": {
             "maxLength": 300,
