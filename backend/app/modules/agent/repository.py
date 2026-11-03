@@ -12,7 +12,7 @@ import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import select, text, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -155,6 +155,15 @@ class RunRepository:
 
     def get(self, run_id: uuid.UUID) -> AgentRun | None:
         return self.session.get(AgentRun, run_id)
+
+    def count_by_status_and_source(self) -> list[tuple[str, str | None, int]]:
+        """Every run ever made, for GET /metrics (NFR-31)."""
+        rows = self.session.execute(
+            select(AgentRun.status, AgentRun.source, func.count()).group_by(
+                AgentRun.status, AgentRun.source
+            )
+        )
+        return [(status.value, source.value if source else None, n) for status, source, n in rows]
 
     def recent(self, limit: int) -> list[AgentRun]:
         return list(

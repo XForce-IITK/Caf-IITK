@@ -7,9 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
+from app.api.ops import router as ops_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.errors import add_error_handlers
+from app.core.metrics import MetricsMiddleware
 
 LOCAL_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
 
@@ -45,14 +47,12 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
         expose_headers=["Retry-After"],
     )
+    # Outermost, so the time recorded includes every other middleware (NFR-31).
+    app.add_middleware(MetricsMiddleware)
     add_error_handlers(app)
     app.add_exception_handler(RequestValidationError, _validation_failed)
     app.include_router(api_router)
-
-    @app.get("/health", tags=["ops"])
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
-
+    app.include_router(ops_router)
     return app
 
 
