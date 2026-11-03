@@ -10,6 +10,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core import context
 from app.models.platform import AuditLog
 
 
@@ -34,7 +35,8 @@ def write_audit(
             actor_role=actor_role,
             before=before,
             after=after,
-            correlation_id=correlation_id,
+            # NFR-29: the request's (or worker job's) correlation ID unless one is given.
+            correlation_id=correlation_id or context.correlation_id(),
         )
     )
 

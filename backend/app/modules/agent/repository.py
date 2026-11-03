@@ -70,7 +70,11 @@ class RunRepository:
         return self.session.scalar(select(AgentRun.id).where(AgentRun.status.in_(ACTIVE)))
 
     def create(
-        self, trigger: AgentTrigger, requested_by: uuid.UUID | None, now: datetime
+        self,
+        trigger: AgentTrigger,
+        requested_by: uuid.UUID | None,
+        now: datetime,
+        correlation_id: str | None = None,
     ) -> AgentRun:
         """Queue a run; the partial unique index allows only one active run (FR-50).
 
@@ -82,6 +86,7 @@ class RunRepository:
             requested_by=requested_by,
             status=AgentRunStatus.QUEUED,
             started_at=now,
+            correlation_id=correlation_id,
         )
         try:
             with self.session.begin_nested():

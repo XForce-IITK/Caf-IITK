@@ -47,6 +47,9 @@ class AgentRun(Base):
     report: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     started_at: Mapped[CreatedAt]
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # NFR-29: the request (or scheduler job) that queued the run; the worker logs the
+    # run under it, and its tool and LLM calls reach it through run_id.
+    correlation_id: Mapped[str | None] = mapped_column(Text)
 
 
 class AgentToolCall(Base):
