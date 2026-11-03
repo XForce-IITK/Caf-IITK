@@ -110,6 +110,31 @@ class CatalogueService:
                 )
             return item
 
+    def remove_item(self, admin: User, item_id: uuid.UUID) -> MenuItem:
+        """FR-10 / US-08: soft-delete an item by setting it to REMOVED.
+
+        The row is never deleted, so orders already placed keep their lines and price
+        snapshots and proceed normally. Removing an already removed item is a no-op.
+        """
+        with self.session.begin():
+            item = self.items.lock(item_id)
+            if item is None:
+                raise ItemNotFoundError
+            if item.status is ItemStatus.REMOVED:
+                return item
+            item.status = ItemStatus.REMOVED
+            write_audit(
+                self.session,
+                action="ITEM_REMOVED",
+                entity_type="menu_item",
+                entity_id=str(item.id),
+                actor_id=str(admin.id),
+                actor_role=admin.role.value,
+                before={"status": ItemStatus.ACTIVE.value},
+                after={"status": ItemStatus.REMOVED.value},
+            )
+            return item
+
     def flag_item(self, staff: User, item_id: uuid.UUID, reason: str) -> MenuItem:
         """FR-11 / US-09: make an ACTIVE item non-orderable until the flag is cleared.
 
