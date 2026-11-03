@@ -57,6 +57,78 @@
         "title": "AdminCancelOrderRequest",
         "type": "object"
       },
+      "AdminOrderOut": {
+        "description": "FR-45: an order as the Administrator sees it, with who placed it and when it is due.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "paid_paise": {
+            "title": "Paid Paise",
+            "type": "integer"
+          },
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "slot_starts_at": {
+            "format": "date-time",
+            "title": "Slot Starts At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "student_email": {
+            "title": "Student Email",
+            "type": "string"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          },
+          "subsidy_applied": {
+            "title": "Subsidy Applied",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "slot_id",
+          "version",
+          "paid_paise",
+          "subsidy_applied",
+          "price",
+          "created_at",
+          "student_id",
+          "student_name",
+          "student_email",
+          "slot_starts_at"
+        ],
+        "title": "AdminOrderOut",
+        "type": "object"
+      },
       "AgentRunDetailOut": {
         "description": "FR-63: the run, its report (FR-52), its proposals and its tool-call log (FR-62).",
         "properties": {
@@ -512,6 +584,40 @@
           }
         },
         "title": "ItemUpdate",
+        "type": "object"
+      },
+      "ItemUtilisationOut": {
+        "properties": {
+          "allocated": {
+            "title": "Allocated",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "integer"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "allocated",
+          "total",
+          "available"
+        ],
+        "title": "ItemUtilisationOut",
         "type": "object"
       },
       "KitchenAction": {
@@ -1781,6 +1887,42 @@
         "title": "SlotQueueOut",
         "type": "object"
       },
+      "SlotUtilisationOut": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "starts_at",
+          "ends_at",
+          "booked",
+          "capacity"
+        ],
+        "title": "SlotUtilisationOut",
+        "type": "object"
+      },
       "SnapshotOut": {
         "description": "One immutable price snapshot version (FR-27).",
         "properties": {
@@ -2024,6 +2166,54 @@
           "role"
         ],
         "title": "UserOut",
+        "type": "object"
+      },
+      "UtilisationOut": {
+        "description": "FR-46: how full each slot and item is on a service date, and orders per state.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemUtilisationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "order_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/OrderStatus"
+            },
+            "title": "Order Counts",
+            "type": "object"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotUtilisationOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "service_date",
+          "as_of",
+          "slots",
+          "items",
+          "order_counts"
+        ],
+        "title": "UtilisationOut",
         "type": "object"
       },
       "ValidationError": {
@@ -2426,6 +2616,141 @@
         "summary": "Edit Item",
         "tags": [
           "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/orders": {
+      "get": {
+        "description": "FR-45 / US-37: every order of a service date, filtered by state, slot and Student,\nordered by slot time and then by when it was placed.",
+        "operationId": "list_day_orders",
+        "parameters": [
+          {
+            "description": "Defaults to the current service date.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Defaults to the current service date.",
+              "title": "Date"
+            }
+          },
+          {
+            "description": "Repeat for several states.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderStatus"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several states.",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "slot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot Id"
+            }
+          },
+          {
+            "description": "Part of the Student's name or email.",
+            "in": "query",
+            "name": "student",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the Student's name or email.",
+              "title": "Student"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminOrderOut"
+                  },
+                  "title": "Response List Day Orders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Day Orders",
+        "tags": [
+          "ordering"
         ]
       }
     },
@@ -2945,6 +3270,67 @@
         "summary": "Reactivate Account",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/utilisation": {
+      "get": {
+        "description": "FR-46 / US-37: booked/capacity per slot, allocated/total/available per item and\norders per state. The dashboard polls this every P-POLL (at most 30 s).",
+        "operationId": "get_utilisation",
+        "parameters": [
+          {
+            "description": "Defaults to the current service date.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Defaults to the current service date.",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtilisationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Utilisation",
+        "tags": [
+          "ordering"
         ]
       }
     },

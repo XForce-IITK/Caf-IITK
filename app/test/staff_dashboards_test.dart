@@ -1,3 +1,4 @@
+import 'package:caf_app/api/api.dart';
 import 'package:caf_app/auth/session.dart';
 import 'package:caf_app/dashboards/common.dart';
 import 'package:caf_app/main.dart';
@@ -1068,6 +1069,208 @@ void main() {
 
       expect(find.byKey(const Key('admin-slot-s2')), findsOne);
       expect(_text(tester, 'admin-slot-s2'), '12:15 – 12:30 · 20 seats left');
+    });
+
+    group('monitoring the day (US-37)', () {
+      const ordersUrl = '/api/v1/admin/orders';
+      const utilisationUrl = '/api/v1/admin/utilisation';
+
+      Map<String, Object?> adminOrder(
+        String id,
+        String slotId,
+        String startsAt,
+        String status,
+        String student,
+      ) => {
+        'id': id,
+        'status': status,
+        'slot_id': slotId,
+        'version': 1,
+        'paid_paise': 8000,
+        'subsidy_applied': false,
+        'price': {
+          'lines': [
+            {
+              'item_id': 'thali',
+              'name': 'Thali',
+              'unit_price_paise': 8000,
+              'qty': 1,
+              'line_base_paise': 8000,
+              'rule_id': null,
+              'discount_pct': 0,
+              'line_discount_paise': 0,
+              'line_total_paise': 8000,
+            },
+          ],
+          'slot_id': slotId,
+          'discounted_subtotal_paise': 8000,
+          'subsidy_paise': 0,
+          'rounding_adjustment_paise': 0,
+          'payable_paise': 8000,
+        },
+        'created_at': '2026-10-06T03:40:00Z',
+        'student_id': 'u-$student',
+        'student_name': student,
+        'student_email': '${student.toLowerCase()}@iitk.ac.in',
+        'slot_starts_at': startsAt,
+      };
+
+      late List<Map<String, Object?>> orders;
+
+      setUp(() {
+        orders = [
+          adminOrder('o1', 's1', '2026-10-06T06:30:00Z', 'ACCEPTED', 'Ravi'),
+          adminOrder('o2', 's2', '2026-10-06T06:45:00Z', 'ACCEPTED', 'Asha'),
+          adminOrder('o3', 's2', '2026-10-06T06:45:00Z', 'CANCELLED', 'Meera'),
+        ];
+        // Filters the way caf-api does, so the screen shows what it would.
+        cafe.routes[ordersUrl] = (r) {
+          // The query as it goes on the wire, as caf-api would parse it.
+          final query = r.options.uri.queryParameters;
+          final statuses = r.options.uri.queryParametersAll['status'] ?? [];
+          return Reply(200, [
+            for (final order in orders)
+              if ((query['slot_id'] == null ||
+                      order['slot_id'] == query['slot_id']) &&
+                  (statuses.isEmpty || statuses.contains(order['status'])) &&
+                  (query['student'] == null ||
+                      (order['student_name'] as String).toLowerCase().contains(
+                        (query['student'] as String).toLowerCase(),
+                      )))
+                order,
+          ]);
+        };
+      });
+
+      Future<void> choose(WidgetTester tester, String menu, String item) async {
+        await _tap(tester, menu);
+        await tester.tap(find.byKey(Key(item)).last);
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('TC-US37-AC1: filtering by slot 12:15 and state ACCEPTED '
+          'lists only matching orders', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-orders');
+        expect(_text(tester, 'orders-count'), '3 orders');
+
+        await choose(tester, 'filter-slot', 'filter-slot-s2');
+        await choose(tester, 'filter-status', 'filter-status-ACCEPTED');
+
+        final sent = cafe.server.to(ordersUrl).last.options.uri;
+        expect(sent.queryParameters['slot_id'], 's2');
+        expect(sent.queryParametersAll['status'], ['ACCEPTED']);
+        expect(
+          sent.queryParameters['date'],
+          serviceDate(istToday()).toIso8601String(),
+        );
+        expect(_text(tester, 'orders-count'), '1 order');
+        expect(find.byKey(const Key('admin-order-o2')), findsOne);
+        expect(find.byKey(const Key('admin-order-o1')), findsNothing);
+        expect(find.byKey(const Key('admin-order-o3')), findsNothing);
+        expect(find.textContaining('12:15 · Asha'), findsOne);
+        expect(find.textContaining('Thali × 1 · ₹80'), findsOne);
+      });
+
+      testWidgets('searching by Student sends the text; nothing matching '
+          'says so', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-orders');
+
+        await tester.enterText(
+          find.byKey(const Key('filter-student')),
+          ' rav ',
+        );
+        await _tap(tester, 'filter-student-search');
+        expect(
+          cafe.server.to(ordersUrl).last.options.queryParameters['student'],
+          'rav',
+        );
+        expect(find.byKey(const Key('admin-order-o1')), findsOne);
+        expect(_text(tester, 'orders-count'), '1 order');
+
+        await tester.enterText(find.byKey(const Key('filter-student')), 'zed');
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('orders-empty')), findsOne);
+      });
+
+      Map<String, Object?> utilisation(int booked, int allocated) => {
+        'service_date': '2026-10-06',
+        'as_of': '2026-10-06T04:30:00Z',
+        'slots': [
+          {
+            'slot_id': 's2',
+            'starts_at': '2026-10-06T06:45:00Z',
+            'ends_at': '2026-10-06T07:00:00Z',
+            'booked': booked,
+            'capacity': 30,
+          },
+        ],
+        'items': [
+          {
+            'item_id': 'thali',
+            'name': 'Thali',
+            'allocated': allocated,
+            'total': 40,
+            'available': 40 - allocated,
+          },
+        ],
+        'order_counts': {
+          'PENDING_PAYMENT': 0,
+          'ACCEPTED': booked,
+          'PREPARING': 0,
+          'READY': 0,
+          'PICKED_UP': 0,
+          'NO_SHOW': 0,
+          'CANCELLED': 1,
+          'PAYMENT_FAILED': 0,
+        },
+      };
+
+      testWidgets('TC-US37-AC2: utilisation figures update within 30 s as '
+          'bookings change', (tester) async {
+        var figures = utilisation(12, 15);
+        cafe.routes[utilisationUrl] = (_) => Reply(200, figures);
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-utilisation');
+
+        expect(find.textContaining('12/30 seats booked'), findsOne);
+        expect(find.textContaining('15/40 allocated · 25 left'), findsOne);
+        expect(_text(tester, 'utilisation-as-of'), startsWith('As of 10:00'));
+        expect(find.text('Accepted: 12'), findsOne);
+        expect(find.text('Cancelled: 1'), findsOne);
+
+        figures = utilisation(13, 17);
+        // P-POLL is 10 s, so the change shows well within 30 s.
+        expect(_poll, lessThanOrEqualTo(const Duration(seconds: 30)));
+        await tester.pump(_poll);
+        await tester.pumpAndSettle();
+        expect(cafe.server.to(utilisationUrl), hasLength(2));
+        expect(find.textContaining('13/30 seats booked'), findsOne);
+        expect(find.textContaining('17/40 allocated · 23 left'), findsOne);
+        expect(find.text('Accepted: 13'), findsOne);
+      });
+
+      testWidgets('a failed utilisation refresh keeps the last figures', (
+        tester,
+      ) async {
+        cafe.routes[utilisationUrl] = (_) => Reply(200, utilisation(12, 15));
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-utilisation');
+
+        cafe.routes[utilisationUrl] = (_) => const Reply(503);
+        await tester.pump(_poll);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('utilisation-stale')), findsOne);
+        expect(find.textContaining('12/30 seats booked'), findsOne);
+
+        cafe.routes[utilisationUrl] = (_) => Reply(200, utilisation(14, 15));
+        await tester.pump(_poll);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('utilisation-stale')), findsNothing);
+        expect(find.textContaining('14/30 seats booked'), findsOne);
+      });
     });
   });
 }
