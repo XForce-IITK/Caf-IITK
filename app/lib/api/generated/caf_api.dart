@@ -5,6 +5,7 @@
 import 'package:dio/dio.dart';
 
 import 'clients/agent_client.dart';
+import 'clients/audit_client.dart';
 import 'clients/inventory_client.dart';
 import 'clients/catalogue_client.dart';
 import 'clients/ordering_client.dart';
@@ -25,6 +26,7 @@ class CafApi {
   static String get version => '0.1.0';
 
   AgentClient? _agent;
+  AuditClient? _audit;
   InventoryClient? _inventory;
   CatalogueClient? _catalogue;
   OrderingClient? _ordering;
@@ -36,6 +38,8 @@ class CafApi {
   OpsClient? _ops;
 
   AgentClient get agent => _agent ??= AgentClient(_dio, baseUrl: _baseUrl);
+
+  AuditClient get audit => _audit ??= AuditClient(_dio, baseUrl: _baseUrl);
 
   InventoryClient get inventory =>
       _inventory ??= InventoryClient(_dio, baseUrl: _baseUrl);

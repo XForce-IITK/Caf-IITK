@@ -2,13 +2,17 @@
 
 Services own transactions (`with session.begin(): ...`); only repositories
 issue SQL. Routers receive a session through the `get_session` dependency.
+
+Every transaction a session begins runs as the caf_app role (migration 0005), so
+PostgreSQL refuses any UPDATE or DELETE of an audit entry (NFR-26, FR-48).
 """
 
 from collections.abc import Generator
 from functools import lru_cache
+from typing import Any
 
-from sqlalchemy import Engine, create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import Connection, Engine, create_engine, event
+from sqlalchemy.orm import Session, SessionTransaction, sessionmaker
 
 from app.core.config import get_settings
 
@@ -19,6 +23,24 @@ from app.core.config import get_settings
 # outage, and while the database is down each attempt gives its connection back
 # within the connect timeout anyway.
 CONNECT_TIMEOUT_S = 2
+
+# The application's database role: all it needs, but only INSERT and SELECT on
+# audit_log. The agent's repository narrows it further to caf_agent (NFR-25).
+APP_ROLE = "caf_app"
+
+
+def run_as_app_role(factory: sessionmaker[Session]) -> sessionmaker[Session]:
+    """Make every transaction the factory's sessions begin run as APP_ROLE.
+
+    SET LOCAL lasts until the transaction ends, so a pooled connection never
+    carries the role into work that is not a session's.
+    """
+
+    @event.listens_for(factory, "after_begin")
+    def _set_role(session: Session, transaction: SessionTransaction, conn: Connection) -> Any:
+        conn.exec_driver_sql(f"SET LOCAL ROLE {APP_ROLE}")
+
+    return factory
 
 
 @lru_cache
@@ -34,7 +56,7 @@ def get_engine() -> Engine:
 
 @lru_cache
 def get_sessionmaker() -> sessionmaker[Session]:
-    return sessionmaker(bind=get_engine(), expire_on_commit=False)
+    return run_as_app_role(sessionmaker(bind=get_engine(), expire_on_commit=False))
 
 
 def get_session() -> Generator[Session]:
