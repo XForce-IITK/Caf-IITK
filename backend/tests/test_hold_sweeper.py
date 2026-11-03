@@ -203,8 +203,8 @@ def _modify(
 def _crashed_order(api: TestClient, engine: Engine, menu: dict[str, Any]) -> uuid.UUID:
     """An order committed as PENDING_PAYMENT whose payment result never arrived."""
     _use_gateway(api, CrashOnAuthorise())
-    with pytest.raises(Crash):
-        _place(api, _student(engine), menu)
+    # The client sees a generic 500 (NFR-23); the order stays committed as a hold.
+    assert _place(api, _student(engine), menu).status_code == 500
     with Session(engine) as session:
         order = session.scalars(
             select(Order).where(Order.status == OrderStatus.PENDING_PAYMENT)
@@ -418,8 +418,7 @@ def _crashed_modification(
     student = _student(engine)
     order = _place(api, student, menu)
     assert order.json()["status"] == "ACCEPTED"
-    with pytest.raises(Crash):
-        _modify(api, student, order.json(), cart, payable)
+    assert _modify(api, student, order.json(), cart, payable).status_code == 500
     return dict(order.json(), student=student)
 
 

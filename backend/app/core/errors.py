@@ -3,9 +3,13 @@
 import logging
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from starlette.exceptions import HTTPException
+
+from app.core import context
 
 log = logging.getLogger("caf.api")
 
@@ -41,11 +45,31 @@ async def _database_unavailable(request: Request, exc: Exception) -> JSONRespons
     log.warning("%s: %s %s: %s", cause, request.method, request.url.path, exc)
     return JSONResponse(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        content={"detail": "The service is temporarily unavailable. Please try again shortly."},
+        content=context.server_error_body(
+            "The service is temporarily unavailable. Please try again shortly."
+        ),
         headers={"Retry-After": str(DATABASE_RETRY_AFTER_S)},
     )
 
 
+async def _http_error(request: Request, exc: Exception) -> Response:
+    """A deliberate 5xx (`503 Busy, try again`) also carries the correlation ID (NFR-23).
+
+    Only a plain-text detail is kept; anything structured is replaced by the
+    generic message, since a 5xx must not describe the system's internals.
+    """
+    assert isinstance(exc, HTTPException)
+    if exc.status_code < 500:
+        return await http_exception_handler(request, exc)
+    body = (
+        context.server_error_body(exc.detail)
+        if isinstance(exc.detail, str)
+        else context.server_error_body()
+    )
+    return JSONResponse(body, status_code=exc.status_code, headers=exc.headers)
+
+
 def add_error_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(HTTPException, _http_error)
     for error in (OperationalError, InterfaceError, PoolTimeoutError):
         app.add_exception_handler(error, _database_unavailable)

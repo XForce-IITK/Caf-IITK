@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, ConfigDict, StringConstraints
 
 from app.core.text import NoNul
 from app.modules.agent.schemas import ProposalOut
@@ -19,6 +19,8 @@ class ProposalDetailOut(ProposalOut):
 
 
 class RejectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     reason: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300), NoNul
     ]
