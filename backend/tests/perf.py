@@ -32,7 +32,7 @@ from typing import Any
 import httpx
 from loadgen import menu_open_all_day, seed
 from prometheus_client.parser import text_string_to_metric_families
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
 from app.core import clock
@@ -264,7 +264,9 @@ def seed_design(
                     window_start=time(0, 0),
                     window_end=time(23, 45),
                     slot_len_min=15,
-                    default_capacity=seats,
+                    # The seeded slots carry their own capacity; this is the design's,
+                    # within the 1-100 a day allows (NFR-10's slots hold 400).
+                    default_capacity=30,
                 )
             )
         session.add_all([*users, kitchen, *menu])
@@ -538,6 +540,23 @@ def server_view(before: Samples, after: Samples) -> dict[str, dict[str, Any]]:
 WORKLOADS = ("nfr8", "nfr9", "nfr10", "nfr11", "nfr12")
 
 
+def empty_database(engine: Engine) -> None:
+    """Delete every row but the users, the settings and the schema version.
+
+    Each workload's orders stay ACCEPTED, and the kitchen queue lists every open order
+    of the next two slots and of any slot that has ended. Without this, NFR-12's
+    kitchen reads would carry NFR-10's 1,200 orders, far more than a 30-seat slot holds.
+    """
+    with engine.begin() as connection:
+        tables = connection.execute(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                "AND tablename NOT IN ('alembic_version', 'settings', 'users')"
+            )
+        ).scalars()
+        connection.execute(text(f"TRUNCATE {', '.join(f'"{t}"' for t in tables)} CASCADE"))
+
+
 def run(
     workloads: Sequence[str],
     base_url: str,
@@ -545,10 +564,12 @@ def run(
     engine: Engine,
     *,
     scale: float = 1.0,
+    fresh: bool = False,
     on_done: Callable[[Run], None] = lambda run: None,
 ) -> list[Run]:
     """Run each workload in turn; `scale` shrinks the sizes and durations (1.0 = the NFRs).
 
+    With `fresh`, each workload starts from an empty database (`empty_database`).
     `on_done` sees each workload as it finishes, so a later crash loses nothing.
     """
 
@@ -562,6 +583,8 @@ def run(
     runs: list[Run] = []
     with menu_open_all_day(engine):
         for workload in workloads:
+            if fresh:
+                empty_database(engine)
             before = scrape(base_url)
             if workload == "nfr8":
                 results = [nfr8(base_url, engine, clients=n(50), orders=n(200))]
@@ -625,6 +648,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workload", action="append", choices=WORKLOADS, help="default: all")
     parser.add_argument("--scale", type=float, default=1.0, help="shrink sizes and durations")
     parser.add_argument("--json", metavar="FILE", help="also write the results as JSON")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="empty every table but users and settings before each workload (local only)",
+    )
     args = parser.parse_args(argv)
 
     for stream in (sys.stdout, sys.stderr):  # "≤" on a Windows console
@@ -646,6 +674,7 @@ def main(argv: list[str] | None = None) -> int:
             args.mockpay_url,
             engine,
             scale=args.scale,
+            fresh=args.fresh,
             on_done=finished,
         )
     finally:

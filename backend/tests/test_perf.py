@@ -58,7 +58,12 @@ def test_designed_rejections_are_not_errors() -> None:
 
 def test_every_workload_runs_at_a_small_scale(live_stack: LiveStack, perf_db: Engine) -> None:
     runs = perf.run(
-        perf.WORKLOADS, live_stack.api_urls[0], live_stack.mockpay_url, perf_db, scale=0.05
+        perf.WORKLOADS,
+        live_stack.api_urls[0],
+        live_stack.mockpay_url,
+        perf_db,
+        scale=0.05,
+        fresh=True,
     )
     results = [r for run in runs for r in run.results]
     measured = [r for r in results if r.met is not None]
