@@ -464,6 +464,7 @@ def test_tc_us20_ac1_price_changed_after_the_quote_is_409_with_a_fresh_quote(
         engine,
         DiscountRule(
             id=uuid.uuid4(),
+            name="Everything 5 %",
             start_time=time(12, 0),
             end_time=time(13, 0),
             pct=5,

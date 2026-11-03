@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 
 import 'clients/agent_client.dart';
 import 'clients/audit_client.dart';
+import 'clients/pricing_client.dart';
 import 'clients/inventory_client.dart';
 import 'clients/catalogue_client.dart';
 import 'clients/ordering_client.dart';
@@ -13,7 +14,6 @@ import 'clients/proposals_client.dart';
 import 'clients/slots_client.dart';
 import 'clients/identity_client.dart';
 import 'clients/kitchen_client.dart';
-import 'clients/pricing_client.dart';
 import 'clients/ops_client.dart';
 
 /// Caf@IITK API `v0.1.0`
@@ -27,6 +27,7 @@ class CafApi {
 
   AgentClient? _agent;
   AuditClient? _audit;
+  PricingClient? _pricing;
   InventoryClient? _inventory;
   CatalogueClient? _catalogue;
   OrderingClient? _ordering;
@@ -34,12 +35,14 @@ class CafApi {
   SlotsClient? _slots;
   IdentityClient? _identity;
   KitchenClient? _kitchen;
-  PricingClient? _pricing;
   OpsClient? _ops;
 
   AgentClient get agent => _agent ??= AgentClient(_dio, baseUrl: _baseUrl);
 
   AuditClient get audit => _audit ??= AuditClient(_dio, baseUrl: _baseUrl);
+
+  PricingClient get pricing =>
+      _pricing ??= PricingClient(_dio, baseUrl: _baseUrl);
 
   InventoryClient get inventory =>
       _inventory ??= InventoryClient(_dio, baseUrl: _baseUrl);
@@ -60,9 +63,6 @@ class CafApi {
 
   KitchenClient get kitchen =>
       _kitchen ??= KitchenClient(_dio, baseUrl: _baseUrl);
-
-  PricingClient get pricing =>
-      _pricing ??= PricingClient(_dio, baseUrl: _baseUrl);
 
   OpsClient get ops => _ops ??= OpsClient(_dio, baseUrl: _baseUrl);
 }

@@ -492,6 +492,251 @@
         "title": "CancelledOrderOut",
         "type": "object"
       },
+      "DiscountRuleCreate": {
+        "additionalProperties": false,
+        "description": "FR-22. A slot is discounted when its start is in [start_time, end_time).\n\n`category` is required for a CATEGORY rule and `item_ids` for an ITEMS rule;\neach is refused for any other scope.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_time": {
+            "format": "time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "item_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pct": {
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pct",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DiscountScope"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "start_time",
+          "end_time",
+          "pct",
+          "scope"
+        ],
+        "title": "DiscountRuleCreate",
+        "type": "object"
+      },
+      "DiscountRuleOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "end_time": {
+            "format": "time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pct": {
+            "title": "Pct",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DiscountScope"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "start_time",
+          "end_time",
+          "pct",
+          "scope",
+          "category",
+          "item_ids",
+          "active",
+          "created_at"
+        ],
+        "title": "DiscountRuleOut",
+        "type": "object"
+      },
+      "DiscountRuleUpdate": {
+        "additionalProperties": false,
+        "description": "FR-22: change any of a rule's fields, or deactivate (and reactivate) it.\n\nChanging `scope` clears `category` and `item_ids` unless they are given too.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          }
+        },
+        "title": "DiscountRuleUpdate",
+        "type": "object"
+      },
+      "DiscountScope": {
+        "enum": [
+          "ALL",
+          "CATEGORY",
+          "ITEMS"
+        ],
+        "title": "DiscountScope",
+        "type": "string"
+      },
       "FlagRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2711,6 +2956,139 @@
         "summary": "Search Audit",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/api/v1/admin/discount-rules": {
+      "get": {
+        "description": "FR-22: every discount rule, active or not, by start time.",
+        "operationId": "list_discount_rules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiscountRuleOut"
+                  },
+                  "title": "Response List Discount Rules",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Discount Rules",
+        "tags": [
+          "pricing"
+        ]
+      },
+      "post": {
+        "description": "FR-22 / US-17: add a time-of-day discount; it is active immediately.\n\nIt applies to slots starting in [start_time, end_time). Rules may overlap; a\nline gets only the highest percentage among the rules that cover it (FR-24).",
+        "operationId": "create_discount_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          },
+          "422": {
+            "description": "Invalid input: percentage outside 1-50, an empty time range, a scope without its category or items, or an unknown item"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Discount Rule",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/discount-rules/{rule_id}": {
+      "patch": {
+        "description": "FR-22: edit a rule, or deactivate it with `active: false`.\n\nOrders already placed keep their price snapshots; only later quotes see the change.",
+        "operationId": "update_discount_rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          },
+          "404": {
+            "description": "No such discount rule"
+          },
+          "422": {
+            "description": "Invalid input, an unknown field, or no field to change"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Discount Rule",
+        "tags": [
+          "pricing"
         ]
       }
     },
