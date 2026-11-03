@@ -10,7 +10,7 @@ from datetime import datetime, time, timedelta
 
 from sqlalchemy.orm import Session
 
-from app.core import clock
+from app.core import clock, context
 from app.core.config import get_settings
 from app.models.agent import AgentRun
 from app.models.enums import AgentRunStatus, AgentTrigger
@@ -43,7 +43,7 @@ class AgentService:
         stale_before = now - timedelta(seconds=STALE_AFTER_TIMEOUTS * self._limits().timeout_s)
         with self.session.begin():
             self.runs.fail_stale(stale_before)
-            return self.runs.create(trigger, requested_by, now)
+            return self.runs.create(trigger, requested_by, now, context.correlation_id())
 
     def enqueue_scheduled(self, now: datetime) -> AgentRun | None:
         """Queue today's scheduled run once the time reaches window start - P-AGENT_LEAD."""
@@ -73,12 +73,14 @@ class AgentService:
             run = self.runs.claim_queued()
             if run is None:
                 return None
-            run_id = run.id
+            run_id, correlation_id = run.id, run.correlation_id
         orchestrator = PlanningOrchestrator(
             self.session, self._llm_factory(self.session), self._limits()
         )
+        # NFR-29: the run's log lines carry the ID of the request that queued it.
         try:
-            return orchestrator.execute(run_id, now.date(), now)
+            with context.correlation(correlation_id):
+                return orchestrator.execute(run_id, now.date(), now)
         except Exception:
             # Never leave a run RUNNING: it would block every later run until it goes stale.
             self.session.rollback()

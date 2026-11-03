@@ -15,7 +15,6 @@ from collections.abc import Callable, Iterable
 from functools import wraps
 from typing import Any, ParamSpec, Protocol, TypeVar
 
-from fastapi.routing import iter_route_contexts
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -30,11 +29,9 @@ from prometheus_client.registry import Collector
 from sqlalchemy import Engine, event
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-__all__ = ["CONTENT_TYPE_LATEST", "MetricsMiddleware", "counts_order_outcome", "render"]
+from app.core.routing import route_template
 
-# A request that matched no route is labelled with this, not its path, so that
-# probing random URLs cannot create an unbounded number of series.
-UNMATCHED_ROUTE = "<unmatched>"
+__all__ = ["CONTENT_TYPE_LATEST", "MetricsMiddleware", "counts_order_outcome", "render"]
 
 REQUEST_DURATION = Histogram(
     "caf_http_request_duration_seconds",
@@ -59,21 +56,6 @@ class MetricsMiddleware:
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
-        self._templates: dict[int, str] | None = None
-
-    def _template(self, scope: Scope) -> str:
-        route = scope.get("route")
-        if route is None:
-            return UNMATCHED_ROUTE
-        if self._templates is None:
-            # The router stores the route as declared in its module router, without the
-            # /api/v1 prefix; the app's route contexts know the full path.
-            self._templates = {
-                id(context.original_route): context.path_format
-                for context in iter_route_contexts(scope["app"].routes)
-                if context.path_format
-            }
-        return self._templates.get(id(route), getattr(route, "path", UNMATCHED_ROUTE))
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -91,7 +73,7 @@ class MetricsMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
         finally:
-            REQUEST_DURATION.labels(scope["method"], self._template(scope), str(status)).observe(
+            REQUEST_DURATION.labels(scope["method"], route_template(scope), str(status)).observe(
                 time.perf_counter() - started
             )
 

@@ -49,6 +49,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 # Import another module's fixtures, which pytest then injects by parameter name.
 "tests/test_agent_authority.py" = ["F811"]
 "tests/test_metrics.py" = ["F811"]
+"tests/test_observability.py" = ["F811"]
 
 [tool.ruff.lint.isort]
 known-third-party = ["alembic"]
