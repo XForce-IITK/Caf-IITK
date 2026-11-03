@@ -163,9 +163,10 @@ def db_client(engine: Engine) -> Iterator[TestClient]:
     from sqlalchemy import text
     from sqlalchemy.orm import Session, sessionmaker
 
-    from app.db.session import get_session
+    from app.db.session import get_session, run_as_app_role
 
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    # As in production: the app's transactions run as caf_app (NFR-26).
+    factory = run_as_app_role(sessionmaker(bind=engine, expire_on_commit=False))
 
     def override_get_session() -> Iterator[Session]:
         with factory() as session:
