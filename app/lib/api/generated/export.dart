@@ -4,6 +4,7 @@
 
 // Clients
 export 'clients/agent_client.dart';
+export 'clients/audit_client.dart';
 export 'clients/inventory_client.dart';
 export 'clients/catalogue_client.dart';
 export 'clients/ordering_client.dart';
@@ -22,6 +23,8 @@ export 'models/agent_run_out.dart';
 export 'models/agent_run_status.dart';
 export 'models/agent_source.dart';
 export 'models/agent_trigger.dart';
+export 'models/audit_entry_out.dart';
+export 'models/audit_page_out.dart';
 export 'models/cancel_order_request.dart';
 export 'models/cancelled_order_out.dart';
 export 'models/flag_request.dart';
