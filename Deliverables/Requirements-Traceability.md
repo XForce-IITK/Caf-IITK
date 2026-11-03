@@ -39,7 +39,7 @@ Of the 10 critical (★) requirements, 9 pass: FR-7, FR-24, FR-30, FR-32, FR-35,
 | FR-12 |  | Must | T | UC-04, UC-06 | US-09, US-10 | CAFIITK-28 (Done), CAFIITK-134, CAFIITK-135 | TC-US09-AC1…AC3, TC-US10-AC1…AC2 | Integration | #13, #33 | Pass |
 | FR-13 |  | Must | T, D | UC-04 | US-10 | CAFIITK-29 (Done), CAFIITK-135 | TC-US10-AC1…AC2 | Integration, E2E | #13 | Pass |
 | FR-14 |  | Must | T | UC-07 | US-11 | CAFIITK-30 (Done), CAFIITK-136 | TC-US11-AC1 | Integration | #10 | Pass |
-| FR-15 |  | Must | T | UC-07 | US-12 | CAFIITK-31 (Done), CAFIITK-137 | TC-US12-AC1…AC2 | Integration | — | Pass, tested under other names (`test_us12_ac1_…`, `test_us12_ac2_…` in `test_inventory_set.py`) |
+| FR-15 |  | Must | T | UC-07 | US-12 | CAFIITK-31 (Done), CAFIITK-137 | TC-US12-AC1…AC2 | Integration | — | Pass |
 | FR-16 |  | Must | T | UC-07 | US-13 | CAFIITK-32 (Done), CAFIITK-138 | TC-US13-AC1…AC4 | Integration | #40 | Pass |
 | FR-17 |  | Must | T | UC-08 | US-14 | CAFIITK-33 (Done), CAFIITK-139 | TC-US14-AC1…AC2 | Integration | #11 | Pass |
 | FR-18 |  | Must | T | UC-08 | US-15 | CAFIITK-34 (To Do), CAFIITK-140 | TC-US15-AC1…AC2 | Integration | — | Not run |
