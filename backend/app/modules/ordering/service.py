@@ -208,6 +208,19 @@ class OrderService:
         max_active = int(settings["P-MAX_ACTIVE"])
         if self.repo.count_active_orders(student.id, slot.service_date) >= max_active:
             raise ActiveOrderLimitError(max_active)
+
+        # Everything that needs no inventory or seat counter is priced and written
+        # before those rows are locked (CAFIITK-189). Every placement for an item waits
+        # on its one daily_inventory row, so what runs under that lock is what limits a
+        # menu-release rush (SADD 6.5). The Student's lock, already held, is all the
+        # subsidy needs. If the order cannot be priced as quoted, nothing is written
+        # yet and the checks below report as they always have.
+        reservation: _Reservation | None = None
+        quote = self._quote_if_priceable(student, request)
+        if quote is not None and quote.payable_paise == request.quoted_payable_paise:
+            reservation = self._add_order(student, request, idempotency_key, quote)
+            self.session.flush()
+
         stock = self.repo.lock_inventory(item_ids, slot.service_date)
         slot = self.repo.lock_slot(slot.id)
 
@@ -230,14 +243,53 @@ class OrderService:
         if unavailable or slot_unbookable:
             raise UnavailableError(unavailable, slot.id if slot_unbookable else None)
 
-        quote = QuoteService(self.session).price(student, request)
-        if quote.payable_paise != request.quoted_payable_paise:
-            raise PriceChangedError(quote)
+        if reservation is None:
+            # Priced again under the locks, as a quote taken now would be (FR-26).
+            quote = QuoteService(self.session).price(student, request)
+            if quote.payable_paise != request.quoted_payable_paise:
+                raise PriceChangedError(quote)
+            reservation = self._add_order(student, request, idempotency_key, quote)
 
+        actor = {"actor_id": str(student.id), "actor_role": student.role.value}
+        for line in request.lines:
+            row = stock[line.item_id]
+            self._change_allocated(
+                row, line.qty, "PORTIONS_ALLOCATED", reservation.order_id, **actor
+            )
+        before = slot.booked
+        slot.booked += 1
+        write_audit(
+            self.session,
+            action="SEAT_ALLOCATED",
+            entity_type="slot",
+            entity_id=str(slot.id),
+            before={"booked": before},
+            after={"booked": slot.booked, "order_id": str(reservation.order_id)},
+            **actor,
+        )
+        return reservation
+
+    def _quote_if_priceable(self, student: User, request: PlaceOrderRequest) -> QuoteOut | None:
+        """The quote, or None where pricing fails: an item that is no longer active,
+        which the availability check under the locks reports as unavailable.
+        """
+        try:
+            return QuoteService(self.session).price(student, request)
+        except UnknownItemsError:
+            return None
+
+    def _add_order(
+        self,
+        student: User,
+        request: PlaceOrderRequest,
+        idempotency_key: str,
+        quote: QuoteOut,
+    ) -> _Reservation:
+        """The PENDING_PAYMENT order with its lines, price snapshot and AUTH payment."""
         order = Order(
             id=uuid.uuid4(),
             student_id=student.id,
-            slot_id=slot.id,
+            slot_id=request.slot_id,
             status=OrderStatus.PENDING_PAYMENT,
             subsidy_applied=quote.subsidy_paise > 0,
         )
@@ -263,22 +315,6 @@ class OrderService:
             payment,
         )
         self._record_transition(order, None, actor=student)
-
-        actor = {"actor_id": str(student.id), "actor_role": student.role.value}
-        for line in request.lines:
-            row = stock[line.item_id]
-            self._change_allocated(row, line.qty, "PORTIONS_ALLOCATED", order.id, **actor)
-        before = slot.booked
-        slot.booked += 1
-        write_audit(
-            self.session,
-            action="SEAT_ALLOCATED",
-            entity_type="slot",
-            entity_id=str(slot.id),
-            before={"booked": before},
-            after={"booked": slot.booked, "order_id": str(order.id)},
-            **actor,
-        )
 
         self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
         return _Reservation(order.id, payment.id, quote.payable_paise)
