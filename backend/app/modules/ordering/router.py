@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core import clock
 from app.db.session import get_session
+from app.models.enums import OrderStatus
 from app.models.identity import User
 from app.modules.identity.dependencies import (
     TOO_MANY_ORDER_REQUESTS,
@@ -24,9 +26,11 @@ from app.modules.ordering.modification import (
     NothingToChangeError,
     OtherServiceDateError,
 )
+from app.modules.ordering.monitoring import MAX_ADMIN_LISTED_ORDERS, MonitoringService
 from app.modules.ordering.retry import TransientFailureError
 from app.modules.ordering.schemas import (
     AdminCancelOrderRequest,
+    AdminOrderOut,
     CancelledOrderOut,
     CancelOrderRequest,
     ModificationQuoteOut,
@@ -35,6 +39,7 @@ from app.modules.ordering.schemas import (
     OrderDetailOut,
     OrderOut,
     PlaceOrderRequest,
+    UtilisationOut,
 )
 from app.modules.ordering.service import (
     ActiveOrderLimitError,
@@ -427,3 +432,48 @@ def modify_order(
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Busy, try again", headers={"Retry-After": "1"}
         ) from None
+
+
+AdminViewer = Annotated[User, Depends(require_permission(Permission.VIEW_ALL))]
+ServiceDateQuery = Annotated[
+    date | None, Query(alias="date", description="Defaults to the current service date.")
+]
+
+
+@router.get("/admin/orders", responses={403: {"description": "Only the Administrator"}})
+def list_day_orders(
+    admin: AdminViewer,
+    session: Annotated[Session, Depends(get_session)],
+    service_date: ServiceDateQuery = None,
+    order_status: Annotated[
+        list[OrderStatus] | None, Query(alias="status", description="Repeat for several states.")
+    ] = None,
+    slot_id: uuid.UUID | None = None,
+    student: Annotated[
+        str | None,
+        Query(min_length=1, max_length=100, description="Part of the Student's name or email."),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=MAX_ADMIN_LISTED_ORDERS)] = MAX_ADMIN_LISTED_ORDERS,
+) -> list[AdminOrderOut]:
+    """FR-45 / US-37: every order of a service date, filtered by state, slot and Student,
+    ordered by slot time and then by when it was placed."""
+    return MonitoringService(session).list_orders(
+        service_date or clock.current_service_date(),
+        statuses=order_status,
+        slot_id=slot_id,
+        student=student.strip() if student else None,
+        limit=limit,
+    )
+
+
+@router.get("/admin/utilisation", responses={403: {"description": "Only the Administrator"}})
+def get_utilisation(
+    admin: AdminViewer,
+    session: Annotated[Session, Depends(get_session)],
+    service_date: ServiceDateQuery = None,
+) -> UtilisationOut:
+    """FR-46 / US-37: booked/capacity per slot, allocated/total/available per item and
+    orders per state. The dashboard polls this every P-POLL (at most 30 s)."""
+    return MonitoringService(session).utilisation(
+        service_date or clock.current_service_date(), clock.now()
+    )

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, aliased
 from app.models.capacity import DailyInventory, Slot
 from app.models.catalogue import MenuItem
 from app.models.enums import (
+    ItemStatus,
     ModificationStatus,
     OrderStatus,
     PaymentCause,
@@ -343,3 +344,88 @@ class OrderRepository:
             .order_by(PriceSnapshot.version.desc())
             .limit(1)
         ).one()
+
+
+class MonitoringRepository:
+    """Read-only queries behind the Administrator's day view (FR-45, FR-46)."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def list_day_orders(
+        self,
+        service_date: date,
+        *,
+        statuses: list[OrderStatus] | None,
+        slot_id: uuid.UUID | None,
+        student: str | None,
+        limit: int,
+    ) -> list[tuple[Order, PriceSnapshot, User, Slot]]:
+        """Orders in the date's slots, by slot then placement time, each with its latest
+        snapshot, its Student and its slot. `student` matches part of a name or email."""
+        latest = (
+            select(func.max(PriceSnapshot.version))
+            .where(PriceSnapshot.order_id == Order.id)
+            .correlate(Order)
+            .scalar_subquery()
+        )
+        query = (
+            select(Order, PriceSnapshot, User, Slot)
+            .join(Slot, Slot.id == Order.slot_id)
+            .join(User, User.id == Order.student_id)
+            .join(
+                PriceSnapshot,
+                (PriceSnapshot.order_id == Order.id) & (PriceSnapshot.version == latest),
+            )
+            .where(Slot.service_date == service_date)
+        )
+        if statuses:
+            query = query.where(Order.status.in_(statuses))
+        if slot_id is not None:
+            query = query.where(Order.slot_id == slot_id)
+        if student:
+            pattern = (
+                "%" + student.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            )
+            query = query.where(
+                User.name.ilike(pattern, escape="\\") | User.email.ilike(pattern, escape="\\")
+            )
+        rows = self.session.execute(
+            query.order_by(Slot.starts_at, Order.created_at, Order.id).limit(limit)
+        )
+        return [(order, snapshot, user, slot) for order, snapshot, user, slot in rows.tuples()]
+
+    def day_slots(self, service_date: date) -> list[Slot]:
+        return list(
+            self.session.scalars(
+                select(Slot).where(Slot.service_date == service_date).order_by(Slot.starts_at)
+            )
+        )
+
+    def day_items(self, service_date: date) -> list[tuple[MenuItem, int, int]]:
+        """(item, total, allocated) for every item with portions set for the date, and
+        every ACTIVE item without any (0, 0), by name."""
+        rows = self.session.execute(
+            select(
+                MenuItem,
+                func.coalesce(DailyInventory.total, 0),
+                func.coalesce(DailyInventory.allocated, 0),
+            )
+            .outerjoin(
+                DailyInventory,
+                (DailyInventory.item_id == MenuItem.id)
+                & (DailyInventory.service_date == service_date),
+            )
+            .where((MenuItem.status == ItemStatus.ACTIVE) | DailyInventory.item_id.is_not(None))
+            .order_by(func.lower(MenuItem.name), MenuItem.id)
+        )
+        return [(item, total, allocated) for item, total, allocated in rows.tuples()]
+
+    def day_order_counts(self, service_date: date) -> dict[OrderStatus, int]:
+        rows = self.session.execute(
+            select(Order.status, func.count())
+            .join(Slot, Slot.id == Order.slot_id)
+            .where(Slot.service_date == service_date)
+            .group_by(Order.status)
+        )
+        return {status: count for status, count in rows.tuples()}
