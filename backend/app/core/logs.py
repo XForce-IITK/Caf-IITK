@@ -37,12 +37,14 @@ _TEXT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"\beyJ[\w-]*\.[\w-]+\.[\w-]*"), REDACTED),
     # Provider API keys (sk-..., sk-proj-...).
     (re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"), REDACTED),
-    # The password in postgresql+psycopg://user:password@host/db
-    (re.compile(r"(://[^:/@\s]+:)[^@\s]+@"), rf"\1{REDACTED}@"),
+    # The password in postgresql+psycopg://user:password@host/db or redis://:password@host;
+    # not a port, so http://host:8000/users/a@iitk.ac.in is left alone.
+    (re.compile(r"(://[^:/@\s]*:)[^@\s/]+@"), rf"\1{REDACTED}@"),
     # password=..., "refresh_token": "...", api_key: ...
     (
         re.compile(
-            rf"""(\b{_SECRET_KEY_TEXT}["']?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;&)}}\]]+)""",
+            # An already redacted value matches as a whole, so redacting twice is harmless.
+            rf"""(\b{_SECRET_KEY_TEXT}["']?\s*[:=]\s*)("[^"]*"|'[^']*'|\[REDACTED\]|[^\s,;&)}}\]]+)""",
             re.IGNORECASE,
         ),
         rf"\1{REDACTED}",
@@ -105,7 +107,14 @@ class ContextFilter(logging.Filter):
 
 class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(record.getMessage())
+        try:
+            message = record.getMessage()
+        except Exception:
+            # A filter's exception reaches the caller: a mistyped log call must not
+            # fail the request. Keep the template only; the arguments have no field
+            # names to redact by, so they are dropped.
+            message = f"{record.msg} (arguments dropped: they did not fit the template)"
+        record.msg = redact(message)
         record.args = None
         for key, value in _extras(record).items():
             setattr(record, key, redact_value(key, value))

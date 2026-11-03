@@ -252,6 +252,7 @@ JWT = (
         ("X-API-Key=topsecret", "topsecret"),
         ("CAF_JWT_SECRET=a-very-long-signing-key", "a-very-long-signing-key"),
         ("connect postgresql+psycopg://caf:s3cretpw@db:5432/caf failed", "s3cretpw"),
+        ("cache redis://:s3cretpw@cache:6379/0", "s3cretpw"),
         ("card 4111 1111 1111 1111 declined", "4111 1111 1111 1111"),
         ("card_number=4111111111111111", "4111111111111111"),
     ],
@@ -260,6 +261,8 @@ def test_tc_nfr30_secrets_are_redacted(logged: str, secret: str) -> None:
     redacted = redact(logged)
     assert secret not in redacted
     assert REDACTED in redacted
+    # A record can pass through more than one handler.
+    assert redact(redacted) == redacted
 
 
 @pytest.mark.parametrize(
@@ -269,6 +272,8 @@ def test_tc_nfr30_secrets_are_redacted(logged: str, secret: str) -> None:
         "order 6f1c2a9e-1b7d-4c55-9a43-2f0c8d1e7b6a amount_paise=11000",
         "agent run 1234567890123456 queued",  # 16 digits, but not a card number (Luhn)
         "GET /api/v1/orders/{order_id} 404",
+        # A port is not a password, even with an @ later in the URL.
+        "GET http://localhost:8000/api/v1/users/asha@iitk.ac.in",
     ],
 )
 def test_tc_nfr30_ordinary_values_are_kept(logged: str) -> None:
@@ -288,6 +293,20 @@ def test_tc_nfr30_the_filter_covers_args_extras_and_tracebacks(json_logs: Logs) 
     for secret in ("hunter2", "r3fr3sh", "k3y", JWT):
         assert secret not in written
     assert "a@iitk.ac.in" in written  # only secrets are removed
+
+
+def test_tc_nfr30_a_mistyped_log_call_is_still_logged_and_never_raises(
+    json_logs: Logs,
+) -> None:
+    log = logging.getLogger("caf.test")
+    log.warning("%d portions left for password=%s", "many", "hunter2")
+
+    (entry,) = [e for e in json_logs() if e["logger"] == "caf.test"]
+    assert entry["message"] == (
+        "%d portions left for password=[REDACTED] "
+        "(arguments dropped: they did not fit the template)"
+    )
+    assert "hunter2" not in json.dumps(entry)
 
 
 def test_tc_nfr30_a_failed_login_logs_no_password(db_client: TestClient, json_logs: Logs) -> None:

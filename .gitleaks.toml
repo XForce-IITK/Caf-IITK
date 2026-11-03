@@ -1,0 +1,28 @@
+# gitleaks configuration for the CI secret scan (NFR-24, CAFIITK-170).
+# Uses gitleaks' default rules; the only exception is below.
+
+title = "Caf@IITK"
+
+[extend]
+useDefault = true
+
+# The NFR-30 redaction tests log made-up secrets on purpose, to prove they never
+# reach the logs. Both conditions must hold, so a real secret anywhere else, or
+# any other value in this file, is still reported.
+[[allowlists]]
+description = "Fake secrets in the log-redaction tests"
+condition = "AND"
+paths = ['''^backend/tests/test_observability\.py$''']
+regexes = [
+    '''hunter2''',
+    '''r3fr3sh''',
+    '''k3y''',
+    '''my-key-value''',
+    '''topsecret''',
+    '''a-very-long-signing-key''',
+    '''sk-proj-abcdef0123456789''',
+    '''s3cretpw''',
+    '''4111[ ]?1111[ ]?1111[ ]?1111''',
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9''',
+    '''Corr3ct-Horse-Battery''',
+]
