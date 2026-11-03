@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -161,3 +161,40 @@ class ModifiedOrderOut(OrderOut):
     difference_paise: int
     # Present when the modification lowered the price (FR-39).
     refund: RefundOut | None
+
+
+class AdminOrderOut(OrderOut):
+    """FR-45: an order as the Administrator sees it, with who placed it and when it is due."""
+
+    student_id: uuid.UUID
+    student_name: str
+    student_email: str
+    slot_starts_at: datetime
+
+
+class SlotUtilisationOut(BaseModel):
+    slot_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    booked: int
+    capacity: int
+
+
+class ItemUtilisationOut(BaseModel):
+    item_id: uuid.UUID
+    name: str
+    allocated: int
+    total: int
+    available: int
+
+
+class UtilisationOut(BaseModel):
+    """FR-46: how full each slot and item is on a service date, and orders per state."""
+
+    service_date: date
+    # When these figures were read; the dashboard refreshes them every P-POLL.
+    as_of: datetime
+    slots: list[SlotUtilisationOut]
+    items: list[ItemUtilisationOut]
+    # Every order state, with 0 for states no order is in.
+    order_counts: dict[OrderStatus, int]
