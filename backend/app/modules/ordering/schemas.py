@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.text import NoNul
 from app.models.enums import OrderStatus, PaymentCause, PaymentStatus, Role
@@ -121,6 +121,8 @@ def _order_fields(order: Order, snapshot: PriceSnapshot) -> dict[str, object]:
 
 class CancelOrderRequest(BaseModel):
     """The order version the Student saw when confirming (NFR-5)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     version: Annotated[int, Field(ge=1)]
 
