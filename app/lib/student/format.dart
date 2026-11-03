@@ -1,3 +1,5 @@
+import '../api/api.dart';
+
 /// Money is integer paise throughout; this is the only place it becomes text.
 String formatPaise(int paise) {
   final sign = paise < 0 ? '−' : '';
@@ -49,3 +51,11 @@ DateTime istToday([DateTime? now]) {
   final ist = (now ?? DateTime.now()).toUtc().add(_istOffset);
   return DateTime(ist.year, ist.month, ist.day);
 }
+
+String categoryLabel(ItemCategory category) => switch (category) {
+  ItemCategory.meal => 'Meal',
+  ItemCategory.snack => 'Snack',
+  ItemCategory.beverage => 'Beverage',
+  ItemCategory.dessert => 'Dessert',
+  ItemCategory.$unknown => 'Other',
+};

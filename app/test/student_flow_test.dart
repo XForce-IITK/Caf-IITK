@@ -267,12 +267,14 @@ void main() {
     expect(formatIstDate(DateTime.utc(2026, 1, 1, 5)), '1 Jan');
   });
 
-  testWidgets('the menu shows price, portions left and why an item cannot be '
+  testWidgets('TC-US10-AC1/AC2 client side: each item shows its name, '
+      'category, description, price, portions left and why it cannot be '
       'ordered', (tester) async {
     final cafe = _Cafe();
     await cafe.open(tester);
 
     expect(find.text('Thali'), findsOneWidget);
+    expect(find.text('Meal · Fresh Thali'), findsOneWidget);
     expect(find.text('₹80'), findsOneWidget);
     expect(find.text('2 left'), findsOneWidget);
     expect(find.text('Sold out'), findsOneWidget);
@@ -282,8 +284,8 @@ void main() {
     expect(_enabled(tester, 'add-samosa'), isFalse);
   });
 
-  testWidgets('slots show remaining seats and only bookable ones can be '
-      'chosen', (tester) async {
+  testWidgets('TC-US16-AC1/AC2 client side: slots show remaining seats and '
+      'only bookable ones can be chosen', (tester) async {
     final cafe = _Cafe();
     await cafe.open(tester);
 
@@ -368,9 +370,8 @@ void main() {
     expect(cafe.server.to(ordersUrl), isEmpty);
   });
 
-  testWidgets('confirming places the order at the quoted price and shows it', (
-    tester,
-  ) async {
+  testWidgets('TC-US22-AC1 client side: confirming places the order at the '
+      'quoted price and shows it', (tester) async {
     final cafe = _Cafe();
     await cafe.open(tester);
     await _reviewTwoThalis(tester);
@@ -404,8 +405,8 @@ void main() {
     );
   });
 
-  testWidgets('NFR-32: a refused order names exactly the item and slot that '
-      'were unavailable', (tester) async {
+  testWidgets('TC-US22-AC2 client side, NFR-32: a refused order names '
+      'exactly the item and slot that were unavailable', (tester) async {
     final cafe = _Cafe()
       ..placeOrder = (_) => const Reply(409, {
         'detail': {
@@ -453,9 +454,8 @@ void main() {
     );
   });
 
-  testWidgets('FR-26: a changed price is shown and must be confirmed again', (
-    tester,
-  ) async {
+  testWidgets('TC-US20-AC1 client side, FR-26: a changed price is shown and '
+      'must be confirmed again', (tester) async {
     var attempts = 0;
     final cafe = _Cafe();
     cafe.placeOrder = (_) {
@@ -489,9 +489,8 @@ void main() {
     expect(find.text('Order confirmed'), findsOneWidget);
   });
 
-  testWidgets('ordering before the menu opens says when it opens', (
-    tester,
-  ) async {
+  testWidgets('TC-US22-AC3 client side: ordering before the menu opens says '
+      'when it opens', (tester) async {
     final cafe = _Cafe()
       ..placeOrder = (_) => const Reply(409, {
         'detail': {
@@ -526,8 +525,8 @@ void main() {
     expect(_enabled(tester, 'review'), isTrue);
   });
 
-  testWidgets('NFR-18: a busy server is retried with the same key and the '
-      'order goes through', (tester) async {
+  testWidgets('TC-US25-AC1 client side, NFR-18: a busy server is retried '
+      'with the same key and the order goes through', (tester) async {
     var attempts = 0;
     final cafe = _Cafe();
     cafe.placeOrder = (_) {
@@ -683,6 +682,28 @@ void main() {
       expect(find.text('12:10'), findsOneWidget);
     });
 
+    testWidgets('TC-US29-AC2 client side: a completed order lists every '
+        'transition with its time and who made it', (tester) async {
+      final cafe = await placed(tester);
+      cafe.tracking = (_) => Reply(200, _tracked('PICKED_UP'));
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+
+      expect(status(tester), 'Picked up. Enjoy your meal.');
+      for (final (step, at) in [
+        ('Order placed', '10:30'),
+        ('Payment confirmed', '10:30'),
+        ('Preparation started by the kitchen', '12:01'),
+        ('Ready for pickup by the kitchen', '12:10'),
+        ('Picked up by the kitchen', '12:20'),
+      ]) {
+        expect(find.text(step), findsOneWidget, reason: step);
+        expect(find.text(at), findsWidgets, reason: at);
+      }
+      expect(find.byKey(const Key('cancel-order')), findsNothing);
+      expect(find.byKey(const Key('change-order')), findsNothing);
+    });
+
     testWidgets('polling stops once the order is finished', (tester) async {
       final cafe = await placed(tester);
       cafe.tracking = (_) => Reply(200, _tracked('PICKED_UP'));
@@ -761,8 +782,8 @@ void main() {
       return tester.widget<Text>(find.byKey(Key(key))).data!;
     }
 
-    testWidgets('an accepted order is cancelled after confirming, with a full '
-        'refund', (tester) async {
+    testWidgets('TC-US28-AC1 client side: an accepted order is cancelled '
+        'after confirming, with a full refund', (tester) async {
       final cafe = await placed(tester);
 
       await _tap(tester, 'cancel-order');
@@ -816,9 +837,8 @@ void main() {
       );
     });
 
-    testWidgets('an order being prepared warns that only part is refunded', (
-      tester,
-    ) async {
+    testWidgets('TC-US28-AC2 client side: an order being prepared warns that '
+        'only part is refunded', (tester) async {
       final cafe = await placed(tester, status: 'PREPARING');
 
       await _tap(tester, 'cancel-order');
@@ -830,9 +850,8 @@ void main() {
       });
     });
 
-    testWidgets('a ready order cannot be cancelled from the screen', (
-      tester,
-    ) async {
+    testWidgets('TC-US28-AC4 client side: a ready order cannot be cancelled '
+        'from the screen', (tester) async {
       await placed(tester, status: 'READY');
 
       expect(find.byKey(const Key('cancel-order')), findsNothing);
@@ -880,7 +899,8 @@ void main() {
       expect(text(tester, 'cancel-result'), 'Order cancelled. ₹70 refunded.');
     });
 
-    testWidgets('past the cut-off the reason is explained', (tester) async {
+    testWidgets('TC-US28-AC3 client side: past the cut-off the reason is '
+        'explained', (tester) async {
       final cafe = await placed(tester);
       cafe.cancel = (_) => const Reply(409, {
         'detail': {
@@ -1056,9 +1076,8 @@ void main() {
       expect(_enabled(tester, 'mod-slot-s3'), isFalse);
     });
 
-    testWidgets('a cheaper change is priced, confirmed and refunded', (
-      tester,
-    ) async {
+    testWidgets('TC-US27-AC1/AC4 client side: moving to another slot at a '
+        'lower price is priced, confirmed and refunded', (tester) async {
       final cafe = await placed(tester);
       await draftOneThaliLater(tester);
 
@@ -1201,7 +1220,8 @@ void main() {
       expect(cafe.server.requests.where((r) => r.method == 'PATCH'), isEmpty);
     });
 
-    testWidgets('an order being prepared cannot be changed', (tester) async {
+    testWidgets('TC-US27-AC5 client side: an order being prepared cannot be '
+        'changed', (tester) async {
       await placed(tester, status: 'PREPARING');
 
       expect(find.byKey(const Key('change-order')), findsNothing);
@@ -1513,6 +1533,34 @@ void main() {
       expect(find.byKey(const Key('order-o0')), findsOneWidget);
       await _tap(tester, 'back-to-menu');
       expect(find.text('Menu'), findsOneWidget);
+    });
+
+    testWidgets('every finished state is named in the list', (tester) async {
+      final cafe = _Cafe()
+        ..myOrders = (_) => Reply(200, [
+          for (final (id, status) in [
+            ('o4', 'NO_SHOW'),
+            ('o3', 'CANCELLED'),
+            ('o2', 'PAYMENT_FAILED'),
+            ('o1', 'PREPARING'),
+          ])
+            {..._order(status), 'id': id},
+        ]);
+      await cafe.open(tester);
+      await _tap(tester, 'my-orders');
+
+      for (final label in [
+        'Not collected',
+        'Cancelled',
+        'Payment failed',
+        'Being prepared',
+      ]) {
+        expect(
+          find.text('6 Oct 10:30 · $label'),
+          findsOneWidget,
+          reason: label,
+        );
+      }
     });
 
     testWidgets('no orders yet', (tester) async {

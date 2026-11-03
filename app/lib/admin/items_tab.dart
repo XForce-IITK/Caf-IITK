@@ -360,7 +360,7 @@ class _OnboardFormState extends ConsumerState<_OnboardForm> {
                   if (category != ItemCategory.$unknown)
                     DropdownMenuItem(
                       value: category,
-                      child: Text(_categoryLabel(category)),
+                      child: Text(categoryLabel(category)),
                     ),
               ],
             ),
@@ -382,11 +382,3 @@ class _OnboardFormState extends ConsumerState<_OnboardForm> {
     );
   }
 }
-
-String _categoryLabel(ItemCategory category) => switch (category) {
-  ItemCategory.meal => 'Meal',
-  ItemCategory.snack => 'Snack',
-  ItemCategory.beverage => 'Beverage',
-  ItemCategory.dessert => 'Dessert',
-  ItemCategory.$unknown => 'Other',
-};
