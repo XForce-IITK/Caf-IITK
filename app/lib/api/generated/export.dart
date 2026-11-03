@@ -31,6 +31,7 @@ export 'models/item_category.dart';
 export 'models/item_create.dart';
 export 'models/item_out.dart';
 export 'models/item_status.dart';
+export 'models/item_update.dart';
 export 'models/kitchen_action.dart';
 export 'models/kitchen_order_out.dart';
 export 'models/kitchen_queue_out.dart';

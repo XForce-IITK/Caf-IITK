@@ -1,10 +1,9 @@
-"""US-04 (CAFIITK-129, FR-6) acceptance tests TC-US04-AC1..AC3.
+"""US-04 (CAFIITK-129, FR-6) acceptance tests TC-US04-AC2..AC3.
 
-The price-change (US-07, CAFIITK-132) and order-cancellation (US-28,
-CAFIITK-153) endpoints are built in later sprints, so AC1 and AC2 use stand-in
-routes guarded by the same permissions those endpoints must declare. Each of
-those tickets adds its own endpoint-level 403 test; AC3 also gets one with the
-slot-configuration endpoint (CAFIITK-139).
+AC1 runs on the real price-change endpoint in test_catalogue_edit.py (CAFIITK-132),
+and AC2 also on the real cancel endpoint in test_order_cancel.py (CAFIITK-153).
+The tests here use stand-in routes guarded by the same permissions those endpoints
+declare; AC3 also gets one with the slot-configuration endpoint (CAFIITK-139).
 """
 
 import uuid
@@ -105,31 +104,6 @@ def _security_events(engine: Engine, user: User) -> list[dict[str, Any]]:
             )
         ).all()
         return [{"action": r.action, "actor_role": r.actor_role, "after": r.after} for r in rows]
-
-
-def test_tc_us04_ac1_kitchen_cannot_change_a_price_and_it_is_logged(
-    guarded: TestClient, engine: Engine, handled: list[str]
-) -> None:
-    kitchen = _user(engine, Role.KITCHEN)
-
-    response = guarded.patch(
-        "/admin/items/thali/price", json={"price_paise": 1}, headers=_auth(kitchen)
-    )
-
-    assert response.status_code == 403
-    assert handled == []  # the handler never ran, so the price is unchanged
-    assert _security_events(engine, kitchen) == [
-        {
-            "action": "PERMISSION_DENIED",
-            "actor_role": "KITCHEN",
-            # Only who, what and where are logged; never the request body.
-            "after": {
-                "permission": "manage_menu",
-                "method": "PATCH",
-                "path": "/admin/items/thali/price",
-            },
-        }
-    ]
 
 
 def test_tc_us04_ac2_kitchen_cannot_cancel_a_students_order(

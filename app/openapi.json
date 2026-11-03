@@ -471,6 +471,49 @@
         "title": "ItemStatus",
         "type": "string"
       },
+      "ItemUpdate": {
+        "additionalProperties": false,
+        "description": "FR-9: the fields the Administrator may edit; the name is fixed once onboarded.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "price_paise": {
+            "anyOf": [
+              {
+                "maximum": 50000.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Paise"
+          }
+        },
+        "title": "ItemUpdate",
+        "type": "object"
+      },
       "KitchenAction": {
         "description": "The kitchen's buttons (FR-43) and the transitions of Table 4.6-A they ask for.",
         "enum": [
@@ -2267,6 +2310,67 @@
           }
         ],
         "summary": "Onboard Item",
+        "tags": [
+          "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/items/{item_id}": {
+      "patch": {
+        "description": "FR-9 / US-07: change an item's description, category or price.\n\nOrders already placed keep their price snapshots; only later quotes use the new price.",
+        "operationId": "edit_item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator edits items"
+          },
+          "404": {
+            "description": "No such menu item"
+          },
+          "409": {
+            "description": "The item is not ACTIVE"
+          },
+          "422": {
+            "description": "Invalid input, an unknown field, or no field to change"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit Item",
         "tags": [
           "catalogue"
         ]
