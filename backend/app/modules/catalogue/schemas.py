@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.core.text import NoNul
 from app.models.enums import ItemCategory, ItemStatus
@@ -24,6 +24,27 @@ class ItemCreate(BaseModel):
     )
     category: ItemCategory
     price_paise: Annotated[int, Field(ge=MIN_PRICE_PAISE, le=MAX_PRICE_PAISE)]
+
+
+class ItemUpdate(BaseModel):
+    """FR-9: the fields the Administrator may edit; the name is fixed once onboarded."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: (
+        Annotated[str, StringConstraints(strip_whitespace=True, max_length=300), NoNul] | None
+    ) = None
+    category: ItemCategory | None = None
+    price_paise: Annotated[int, Field(ge=MIN_PRICE_PAISE, le=MAX_PRICE_PAISE)] | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_field_and_no_nulls(self) -> "ItemUpdate":
+        if not self.model_fields_set:
+            raise ValueError("give at least one of description, category, price_paise")
+        nulls = sorted(name for name in self.model_fields_set if getattr(self, name) is None)
+        if nulls:
+            raise ValueError(f"{', '.join(nulls)} cannot be null")
+        return self
 
 
 class FlagRequest(BaseModel):

@@ -10,7 +10,7 @@ from app.core import clock
 from app.db.session import get_session
 from app.models.catalogue import MenuItem
 from app.models.identity import User
-from app.modules.catalogue.schemas import FlagRequest, ItemCreate, ItemOut, MenuOut
+from app.modules.catalogue.schemas import FlagRequest, ItemCreate, ItemOut, ItemUpdate, MenuOut
 from app.modules.catalogue.service import (
     CatalogueService,
     DuplicateItemNameError,
@@ -63,6 +63,29 @@ def onboard_item(
     return ItemOut.model_validate(item)
 
 
+@router.patch(
+    "/admin/items/{item_id}",
+    responses={
+        403: {"description": "Only the Administrator edits items"},
+        404: {"description": "No such menu item"},
+        409: {"description": "The item is not ACTIVE"},
+        422: {"description": "Invalid input, an unknown field, or no field to change"},
+    },
+)
+def edit_item(
+    item_id: uuid.UUID,
+    body: ItemUpdate,
+    admin: AdminMenuUser,
+    session: Annotated[Session, Depends(get_session)],
+) -> ItemOut:
+    """FR-9 / US-07: change an item's description, category or price.
+
+    Orders already placed keep their price snapshots; only later quotes use the new price.
+    """
+    service = CatalogueService(session)
+    return _item_change(lambda: service.edit_item(admin, item_id, body))
+
+
 _FLAG_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"description": "Only Kitchen Staff and the Administrator flag items"},
     404: {"description": "No such menu item"},
@@ -82,7 +105,7 @@ def flag_item(
     New orders for it get 409; its portions and existing orders are unchanged.
     """
     service = CatalogueService(session)
-    return _flag_change(lambda: service.flag_item(staff, item_id, body.reason))
+    return _item_change(lambda: service.flag_item(staff, item_id, body.reason))
 
 
 @router.delete("/items/{item_id}/flag", responses=_FLAG_RESPONSES)
@@ -91,10 +114,10 @@ def clear_item_flag(
 ) -> ItemOut:
     """FR-11 / US-09: clear the temporary-unavailable flag; the item is orderable again."""
     service = CatalogueService(session)
-    return _flag_change(lambda: service.clear_flag(staff, item_id))
+    return _item_change(lambda: service.clear_flag(staff, item_id))
 
 
-def _flag_change(change: Callable[[], MenuItem]) -> ItemOut:
+def _item_change(change: Callable[[], MenuItem]) -> ItemOut:
     try:
         item = change()
     except ItemNotFoundError:
