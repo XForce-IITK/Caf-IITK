@@ -14,6 +14,7 @@ export 'clients/kitchen_client.dart';
 export 'clients/pricing_client.dart';
 export 'clients/ops_client.dart';
 // Data classes
+export 'models/account_out.dart';
 export 'models/admin_cancel_order_request.dart';
 export 'models/agent_run_detail_out.dart';
 export 'models/agent_run_out.dart';
@@ -71,6 +72,7 @@ export 'models/slot_list_out.dart';
 export 'models/slot_out.dart';
 export 'models/slot_queue_out.dart';
 export 'models/snapshot_out.dart';
+export 'models/staff_create.dart';
 export 'models/token_pair.dart';
 export 'models/tool_call_out.dart';
 export 'models/totals_order.dart';

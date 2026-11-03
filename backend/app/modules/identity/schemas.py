@@ -73,3 +73,39 @@ class TokenPair(BaseModel):
     expires_in: int  # access-token lifetime in seconds
     # The client opens this role's dashboard (FR-5).
     role: Role
+
+
+STAFF_ROLES = frozenset({Role.KITCHEN, Role.ADMIN})
+
+
+def _staff_role(value: Role) -> Role:
+    # Students register themselves (FR-1); this endpoint creates staff only (FR-2).
+    if value not in STAFF_ROLES:
+        raise ValueError("must be KITCHEN or ADMIN")
+    return value
+
+
+def _normalise_any_email(value: str) -> str:
+    """Lower-case and require one @; staff accounts need not be @iitk.ac.in."""
+    email = value.strip().lower()
+    local, sep, domain = email.partition("@")
+    if not sep or not local or not domain or "@" in domain or any(c.isspace() for c in email):
+        raise ValueError("must be a valid email address")
+    return email
+
+
+class StaffCreate(BaseModel):
+    """FR-2: a Kitchen Staff or Administrator account, created by an Administrator."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100), NoNul
+    ]
+    email: Annotated[str, Field(max_length=254), NoNul, AfterValidator(_normalise_any_email)]
+    password: Annotated[str, Field(min_length=8, max_length=128)]
+    role: Annotated[Role, AfterValidator(_staff_role)]
+
+
+class AccountOut(UserOut):
+    is_active: bool
