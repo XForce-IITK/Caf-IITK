@@ -566,9 +566,8 @@ void main() {
       expect(cafe.server.to(proposalsUrl).length, greaterThan(proposalLoads));
     });
 
-    testWidgets('US-39 AC2: starting a run while one is in progress says so', (
-      tester,
-    ) async {
+    testWidgets('TC-US39-AC2 client side: starting a run while one is in '
+        'progress says so', (tester) async {
       cafe.routes[runsUrl] = (r) => r.method == 'POST'
           ? const Reply(409, {
               'detail': {'message': 'busy', 'running_run_id': 'r9'},
@@ -649,7 +648,8 @@ void main() {
       expect(find.text('The run failed: internal error'), findsOne);
     });
 
-    testWidgets("FR-14: setting an item's portions for today", (tester) async {
+    testWidgets("TC-US11-AC1 client side, FR-14: setting an item's portions "
+        'for today', (tester) async {
       final today = istToday();
       cafe.routes['/api/v1/admin/inventory/*'] = (_) => Reply(200, {
         'item_id': 'thali',
@@ -699,7 +699,8 @@ void main() {
       );
     });
 
-    testWidgets('FR-11: marking an item unavailable needs a reason, and an '
+    testWidgets('TC-US09-AC1/AC3 client side, FR-11: marking an item '
+        'unavailable needs a reason, and an '
         'unavailable item can be made available again', (tester) async {
       Reply item(Seen _) => Reply(200, {
         'id': 'x',
@@ -736,9 +737,8 @@ void main() {
       expect(_text(tester, 'item-message-dosa'), 'Dosa can be ordered again.');
     });
 
-    testWidgets('FR-8: adding an item sends its price in paise', (
-      tester,
-    ) async {
+    testWidgets('TC-US06-AC1/AC3 client side, FR-8: adding an item sends its '
+        'price in paise and refuses one under ₹1', (tester) async {
       cafe.routes['/api/v1/admin/items'] = (r) => Reply(201, {
         'id': 'new',
         'name': 'Vada Pav',
@@ -785,9 +785,8 @@ void main() {
       );
     });
 
-    testWidgets('adding an item with a taken name shows the server reason', (
-      tester,
-    ) async {
+    testWidgets('TC-US06-AC2 client side: adding an item with a taken name '
+        'shows the server reason', (tester) async {
       cafe.routes['/api/v1/admin/items'] = (_) =>
           const Reply(409, {'detail': 'An item with this name exists'});
       await cafe.open(tester);
@@ -1009,7 +1008,8 @@ void main() {
       });
     });
 
-    testWidgets("FR-17: configuring tomorrow's service window", (tester) async {
+    testWidgets("TC-US14-AC1 client side, FR-17: configuring tomorrow's "
+        'service window', (tester) async {
       final tomorrow = istToday().add(const Duration(days: 1));
       cafe.routes['/api/v1/admin/service-days/*'] = (_) => const Reply(200, {
         'service_date': '2026-10-07',
@@ -1058,6 +1058,40 @@ void main() {
       expect(
         _text(tester, 'service-day-message'),
         'Saved: 0 pickup slots of 20 minutes, 25 seats each.',
+      );
+    });
+
+    testWidgets('TC-US14-AC2 client side: a slot length that does not divide '
+        'the window shows the server reason', (tester) async {
+      cafe.routes['/api/v1/admin/service-days/*'] = (_) => const Reply(422, {
+        'detail': 'slot length 20 min does not divide the 150-minute window',
+      });
+      await cafe.open(tester);
+      await _openTab(tester, 'tab-service-day');
+
+      await tester.enterText(find.byKey(const Key('slot-length')), '20');
+      await _tap(tester, 'save-service-day');
+
+      expect(
+        _text(tester, 'service-day-message'),
+        'slot length 20 min does not divide the 150-minute window',
+      );
+    });
+
+    testWidgets('TC-US15-AC2 client side: a window that would remove a slot '
+        'with orders shows the server reason', (tester) async {
+      cafe.routes['/api/v1/admin/service-days/*'] = (_) => const Reply(409, {
+        'detail': 'the 12:00 slot has orders and would be removed',
+      });
+      await cafe.open(tester);
+      await _openTab(tester, 'tab-service-day');
+
+      await tester.enterText(find.byKey(const Key('window-start')), '12:30');
+      await _tap(tester, 'save-service-day');
+
+      expect(
+        _text(tester, 'service-day-message'),
+        'the 12:00 slot has orders and would be removed',
       );
     });
 

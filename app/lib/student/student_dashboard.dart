@@ -166,7 +166,13 @@ class _MenuItemTile extends ConsumerWidget {
                 ),
               ],
             ),
-            if (item.description.isNotEmpty) Text(item.description),
+            // FR-13: name, description, category, price, portions, orderable.
+            Text(
+              item.description.isEmpty
+                  ? categoryLabel(item.category)
+                  : '${categoryLabel(item.category)} · ${item.description}',
+              key: Key('details-${item.id}'),
+            ),
             Row(
               children: [
                 Expanded(
