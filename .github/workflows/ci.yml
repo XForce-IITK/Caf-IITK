@@ -16,10 +16,33 @@ concurrency:
 
 jobs:
   jira-key:
+    # The name is a required status check in the repository ruleset ("Default");
+    # renaming the job blocks every merge. It now also checks commits (NFR-44).
     name: Jira key in branch and PR title
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history, so the PR's commits can be listed against its base.
+          fetch-depth: 0
+      - name: Check commit messages
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          # NFR-44: every commit in the PR names its Jira issue; merge commits are
+          # excepted, including GitHub's "Update branch" merges and release merges.
+          missing=$(git log --no-merges --format='%h %s' "$BASE_SHA..$HEAD_SHA" \
+            | grep -Ev 'CAFIITK-[0-9]+' || true)
+          if [ -n "$missing" ]; then
+            printf '%s\n' "$missing" | while IFS= read -r line; do
+              echo "::error::Commit without a Jira key: $line"
+            done
+            echo "Reword these commits so each message contains CAFIITK-<issue>."
+            exit 1
+          fi
+          echo "Every commit names a Jira issue."
       - name: Check branch name and PR title
         env:
           BRANCH: ${{ github.head_ref }}
