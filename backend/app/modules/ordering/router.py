@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core import clock
+from app.core.text import NulFreeStr
 from app.db.session import get_session
 from app.models.enums import OrderStatus
 from app.models.identity import User
@@ -450,7 +451,7 @@ def list_day_orders(
     ] = None,
     slot_id: uuid.UUID | None = None,
     student: Annotated[
-        str | None,
+        NulFreeStr | None,
         Query(min_length=1, max_length=100, description="Part of the Student's name or email."),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_ADMIN_LISTED_ORDERS)] = MAX_ADMIN_LISTED_ORDERS,
