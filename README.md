@@ -98,6 +98,32 @@ Point the client at another API with
 browser calls from any localhost port; in production set `CAF_CORS_ORIGINS` to
 the client's origin (NFR-27).
 
+### Android
+
+The same codebase builds an Android app (package `com.xforce.cafiitk`). The
+Android SDK and `adb` (in `~/Android/Sdk/platform-tools`) must be installed;
+check with `flutter doctor`.
+
+```sh
+cd app
+flutter build apk --release --dart-define=API_BASE_URL=https://<deployed host>
+# build/app/outputs/flutter-apk/app-release.apk
+```
+
+To try it on a phone against the local stack, enable USB debugging, connect
+the phone, and forward its port 8000 to this machine:
+
+```sh
+adb reverse tcp:8000 tcp:8000
+flutter run -d <device id> --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+On the emulator, use `http://10.0.2.2:8000` instead. Plain HTTP is allowed only
+to `localhost`, `127.0.0.1` and `10.0.2.2`
+(`android/app/src/main/res/xml/network_security_config.xml`); any other host
+needs HTTPS. The release APK is signed with the debug key, which is fine for
+sideloading but not for a store.
+
 ### Login, routing and networking
 
 - `lib/auth/session.dart` holds the session (`sessionProvider`). Tokens are kept
