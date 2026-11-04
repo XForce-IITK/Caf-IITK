@@ -124,3 +124,23 @@ def test_a_nul_in_admin_and_kitchen_text_is_422(db_client: TestClient, engine: E
         ),
         "reason",
     )
+
+
+def test_a_nul_in_a_text_query_parameter_is_422(db_client: TestClient, engine: Engine) -> None:
+    """CAFIITK-203: query parameters reach the same text comparisons as bodies."""
+    client = _client(db_client)
+    admin = _admin_headers(engine)
+    probes = [
+        ("/api/v1/admin/audit", name) for name in ("actor_id", "entity_type", "entity_id", "action")
+    ] + [("/api/v1/admin/orders", "student"), ("/api/v1/admin/students", "search")]
+
+    for path, name in probes:
+        _rejects_nul(client.get(path, params={name: "a\u0000"}, headers=admin), name)
+
+
+def test_absent_text_query_parameters_still_work(db_client: TestClient, engine: Engine) -> None:
+    client = _client(db_client)
+    admin = _admin_headers(engine)
+
+    for path in ("/api/v1/admin/audit", "/api/v1/admin/orders", "/api/v1/admin/students"):
+        assert client.get(path, headers=admin).status_code == 200, path
