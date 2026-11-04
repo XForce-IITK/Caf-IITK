@@ -84,6 +84,14 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E72 | For CAFIITK-134 the AI merged `develop` into the branch before merging, instead of rebasing as the revised sprint plan's rule 5 asks | Process lapse | The AI noticed when reading the revised plan | Later PRs rebased just before merge |
 | E73 | The job that starts preparation was registered in an outdated version of the worker's job list, written before a teammate added another job; it would have left auto-prep unscheduled | Stale-code slip | Failing test | Registered in the current list beside the teammate's job |
 | E74 | Local failures of the US-30 AC1 and AC4 rush tests were put down to machine load in a PR without evidence, repeating E63 | Unverified attribution | Reading E62 and E63 in this log | Investigated: a deadlock fix (E62, #54) was not yet merged, and the machine had run out of local ports (about 16,500 closed connections against 16,384 ports). PR corrected; CI, which runs both tests, passed |
+| E75 | For CAFIITK-140 the AI said a concurrency test was included before it had written one | Premature claim | The AI noticed while reviewing its own summary | The test was written and run (a capacity cut waiting on a booking sees the new seat) before the PR was opened |
+| E76 | Told that "#82 is approved", the AI took it to mean the author's #83 and moved CAFIITK-162 to Done in the same step as the merge; the merge was refused as unconfirmed, leaving Jira ahead of GitHub | Process lapse | Merge refused | Issue moved back to In Review; #83 merged and the issue closed only after the author confirmed the PR number |
+| E77 | The first CAFIITK-163 acceptance tests assumed every order transition was made by the Student, missed the refund entry, and read rows left by other tests (the audit log is never emptied, by design) | Test defect | Four failing tests, before the PR | Expected actors and entries corrected; each test filters on values of its own |
+| E78 | The CAFIITK-162 utilisation bars passed text as the progress bar's accessibility value, which Flutter rejects | Implementation defect | Widget tests, before the PR | The figure moved into the bar's label |
+| E79 | A draft of the US-31 results gave the request total as "7,000" without adding it up; the total was 7,811 | Arithmetic error | The AI checked the sum before committing | Corrected before commit |
+| E80 | The PR #90 description mentioned a GitHub handle guessed from a teammate's name, which could have notified an unrelated account | Risk | The AI noticed after opening the PR | Mention removed |
+| E81 | The `caf_app` role (CAFIITK-163) relies on the login user being allowed to switch to it. On a managed database (RDS) this needs an explicit grant, which the migration makes, but it has been checked only on the local stack | **Deployment risk** | Design of the role switch | Pending: to be confirmed on AWS (CAFIITK-190); flagged in #86 |
+| E82 | US-31's latency targets are not met on the local stack, before or after CAFIITK-189. One read got no response under peak load | **Quality risk** | The US-31 acceptance tests (CAFIITK-156) | Pending: to be measured again on AWS (CAFIITK-190), with the load generator off the instance |
 
 ---
 
@@ -512,3 +520,100 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **How it was checked:** 8 tests against PostgreSQL, including the acceptance criterion (nothing at 12:19 for a 12:30 slot, PREPARING with actor SYSTEM at 12:20), only ACCEPTED orders moving, repeat runs, a late run, the version bump, an order cancelled meanwhile, and the job run end to end. A test caught one slip while drafting (E73). CI passed, including the full suite. The PR was approved by a teammate (Suryansh) with no change requests.
 - **What changed:** the PR's explanation of two local rush-test failures was corrected (E74).
 - **Outcome:** accepted.
+
+## Deliverable 3 entries
+
+### Change an item's price safely (CAFIITK-132, US-07)
+
+- **Asked for:** edit an ACTIVE item's description, category and price (FR-9). A price change must never alter an existing order's price snapshot.
+- **AI produced:**
+  - `PATCH /admin/items/{id}`: the name is not editable; an empty body or a null value is a 422.
+  - The item row is locked as flagging locks it. Only the fields that change are audited, in the same transaction; an edit that changes nothing writes nothing.
+  - US-04 AC1 (Kitchen Staff cannot change a price) moved from a stand-in route to this endpoint, closing the gap noted in E31.
+  - The regenerated client.
+- **How it was checked:** 20 tests. The acceptance test places a real order at ₹80, changes the price to ₹90, and checks that the order's snapshot still says ₹80 while a new quote says ₹90. The full backend suite passed. Tried by hand on the Docker Compose stack. Approved by a teammate (Rudransh) with no change requests; the author merged it.
+- **Outcome:** accepted.
+
+### Protect me from price changes at checkout (CAFIITK-145, US-20)
+
+- **Asked for:** an acceptance test for US-20 using a real price change. The behaviour already existed; the traceability matrix recorded it as tested under another name.
+- **AI produced:** one test. A 5 % discount makes the Rs 80 Thali the criterion's Rs 76 quote. The Administrator then changes the price, and confirming at Rs 76 gets 409 with a fresh quote. Nothing is reserved and no payment is attempted.
+- **How it was checked:** the order-placement tests (35) and CI. Approved by a teammate (Suryansh) with no change requests.
+- **Outcome:** accepted.
+
+### Remove a menu item (CAFIITK-133, US-08)
+
+- **Asked for:** soft-delete to REMOVED (FR-10). Orders already placed must proceed and keep their snapshot.
+- **AI produced:**
+  - `DELETE /admin/items/{id}`, which sets the item to REMOVED; removing it again is a no-op. Audited in the same transaction.
+  - The AI traced every place that reads an item's status and found nothing else to change: the menu, order placement, editing, flagging, inventory and proposal approval already treated REMOVED correctly.
+- **How it was checked:** 9 tests, one per acceptance criterion. AC2 takes an order placed before the removal through the kitchen to PICKED_UP, with its history still naming the item. Tried by hand on Docker Compose. Approved by a teammate (Suryansh) with no change requests.
+- **Outcome:** accepted.
+
+### Change slot capacity safely (CAFIITK-140, US-15)
+
+- **Asked for:** change one slot's capacity without dropping bookings (FR-18). A window change that would remove a booked slot must be refused. Before this, any reconfiguration of a day with orders was refused.
+- **AI produced:**
+  - `PATCH /admin/slots/{id}`: a capacity below the booked seats is a 409, and nothing changes. The slot is locked as order placement locks it.
+  - Reconfiguring a day with orders now keeps the slots orders point at, with their IDs and bookings. It refuses (409) only if one of those slots would disappear or fall below its bookings, and regenerates the rest. The day's slots are locked in ascending ID, the system's lock order.
+  - A design choice flagged in the PR: a kept slot takes the new default capacity.
+- **How it was checked:** 16 new tests and 5 rewritten ones. They include a concurrency test on PostgreSQL in which a capacity cut waits for a booking that holds the slot lock, and then sees the new seat (E75). The full suite passed (819). Tried by hand on Docker Compose. Approved by a teammate (Rudransh) with no change requests, so the flagged choice stands.
+- **Outcome:** accepted.
+
+### Monitor the day (CAFIITK-162, US-37)
+
+- **Asked for:** the Administrator's list of the day's orders, with slot, state and Student filters (FR-45), and a utilisation view that updates within 30 s (FR-46).
+- **AI produced:**
+  - `GET /admin/orders`, filtering by state (repeatable), slot, and part of a Student's name or email; wildcard characters are matched literally.
+  - `GET /admin/utilisation`: seats per slot, portions per item, and a count of orders in every state.
+  - Two Administrator tabs. The utilisation tab refreshes every P-POLL (10 s) while it is open, and keeps the last figures if a refresh fails.
+  - The regenerated client.
+- **How it was checked:**
+  - 22 backend tests, through real orders, including one cancelled through the API. 4 widget tests; E78 was caught by these.
+  - The full backend (850) and client suites; client coverage 97 %.
+  - The endpoints were tried by hand on Docker Compose. The new tabs were not opened in a browser, as the PR stated.
+  - Approved by a teammate (Kshitij) with no change requests.
+- **What changed:** the merge was held until the author confirmed which PR was approved (E76).
+- **Outcome:** accepted.
+
+### Trustworthy audit trail (CAFIITK-163, US-38)
+
+- **Asked for:** audit search by entity, carrying the correlation ID (CAFIITK-180) and the price-change audit (CAFIITK-132). The application's role must be refused UPDATE and DELETE on the audit log (NFR-26), and no secret may appear in results.
+- **AI produced:**
+  - Migration 0005: a `caf_app` role with full rights on the business tables, but only INSERT and SELECT on `audit_log`. Every application transaction switches to it, so the database itself refuses to change an audit entry.
+  - The test client runs the same way, so the whole suite exercises the role's rights.
+  - `GET /admin/audit`: search by time range, actor, entity and action, a page at a time. An order's ID also finds its portion and seat changes and its refund.
+  - Values that look like secrets are redacted again on the way out.
+  - Search indexes, and the regenerated client.
+- **How it was checked:**
+  - 19 tests, including all four acceptance criteria. AC3 tries UPDATE, DELETE and TRUNCATE as `caf_app` and gets a permission error. E77 was fixed before the PR.
+  - The full suite passed with every transaction running as `caf_app` (895 tests, and 917 after merging `develop`).
+  - The migration was applied by hand to the existing Docker Compose database and the role's rights checked.
+  - Approved by a teammate (Kshitij) with no change requests.
+- **What changed:** the RDS membership question was left open for the deployment (E81).
+- **Outcome:** accepted.
+
+### Flutter client tests (CAFIITK-186), and Bug CAFIITK-202
+
+- **Asked for:** widget and provider tests for the auth, Student, Kitchen and Administrator flows. The 80 % gate was already enforced, and coverage was already 97 %.
+- **AI produced:**
+  - The AI read each client test against the SRS acceptance criteria. Tests that check a criterion's client side were renamed with its TC ID, across 15 stories, so the traceability matrix can find them.
+  - New tests: a completed order's full history (US-29 AC2); the server's reason for a refused service window (US-14 AC2, US-15 AC2); every finished order state in My orders.
+  - While mapping US-10 AC1, the AI found that the Student menu never showed an item's category. The author had it raised as Bug CAFIITK-202 ("Found by: Code review"). It was fixed in the same PR, with the category labels shared with the Administrator's items tab.
+- **How it was checked:** 146 client tests, and the new US-10 check fails without the fix. Approved by a teammate (Kshitij) with no change requests.
+- **Outcome:** accepted. CAFIITK-202 counts towards the D3 defect total.
+
+### Ordering stays fast at peak (CAFIITK-156, US-31)
+
+- **Asked for:** verify US-31's two latency criteria with Rudransh's CAFIITK-188 numbers and harness, and record them.
+- **AI produced:**
+  - Two named acceptance tests on top of the harness, asserting the real targets at full scale against a live stack. They are skipped in CI, which already runs the harness at 5 % scale.
+  - The AI ran them on the Docker Compose stack before and after CAFIITK-189, and added §5 to the Performance Report.
+- **How it was checked:** both tests failed in both runs. After CAFIITK-189:
+  - AC1 (orders): p95 570 ms against a 500 ms target. The hot-row lock wait fell from 190 ms to 15 ms.
+  - AC2 (reads): p95 about 1.1 s against a 200 ms target.
+  - One read got no response.
+
+  The figures were reported as measured (E79, E82). Approved by a teammate (Kshitij) with no change requests.
+- **What changed:** the report noted that reads spend most of their time before reaching the application, as input for CAFIITK-189. The author decided to close the issue as verified and recorded, with a Jira comment that US-31 is not yet met.
+- **Outcome:** accepted as a measurement. US-31 itself is pending the AWS run (E82).
