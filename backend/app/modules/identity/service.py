@@ -15,6 +15,7 @@ from app.core.security import (
 )
 from app.models.enums import Role
 from app.models.identity import User
+from app.modules.audit.service import write_audit
 from app.modules.identity.rate_limit import (
     RateLimiter,
     login_account_subject,
@@ -87,9 +88,36 @@ class IdentityService:
         )
         # A failure (or an error) keeps its place; only failures are meant to count, so a
         # successful login hands its place back.
-        pair = self._check_credentials(request)
+        try:
+            pair = self._check_credentials(request)
+        except InvalidCredentialsError:
+            self._audit_failed_login(request.email, client_ip)
+            raise
         limiter.give_back(attempt)
         return pair
+
+    def _audit_failed_login(self, email: str, client_ip: str) -> None:
+        """FR-47: a failed login is a security event.
+
+        Only credential failures are recorded, never a login refused by the limit:
+        NFR-21 already caps failures at P-LOGIN_FAILURES a minute per account and per
+        address, while refused attempts are unbounded and would let anyone grow the
+        append-only audit log. An unknown email is recorded by its hash, as in the
+        rate-limit table, so the log holds no address that is not an account.
+        """
+        with self.session.begin():
+            user = self.users.get_by_email(email)
+            write_audit(
+                self.session,
+                action="LOGIN_FAILED",
+                entity_type="user" if user is not None else "security",
+                entity_id=str(user.id) if user is not None else None,
+                after={
+                    "client_ip": client_ip,
+                    "account": "existing" if user is not None else "unknown",
+                    "account_subject": login_account_subject(email),
+                },
+            )
 
     def _check_credentials(self, request: LoginRequest) -> TokenPair:
         with self.session.begin():
