@@ -44,8 +44,8 @@ class QuoteService:
     ) -> QuoteOut:
         """Price inside the caller's transaction.
 
-        Order placement calls this after it holds its locks, so the order is priced
-        exactly as a quote taken at that moment would be (FR-26). A modification
+        Order placement calls this while it holds the Student's lock, so the order is
+        priced exactly as a quote taken at that moment would be (FR-26). A modification
         passes the order it re-prices as `repricing`, so that order's own subsidy
         does not count as the day's subsidy already used (FR-24 step 4).
         """

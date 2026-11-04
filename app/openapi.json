@@ -492,6 +492,265 @@
         "title": "CancelledOrderOut",
         "type": "object"
       },
+      "DiscountRuleCreate": {
+        "additionalProperties": false,
+        "description": "FR-22. A slot is discounted when its start is in [start_time, end_time).\n\n`category` is required for a CATEGORY rule and `item_ids` for an ITEMS rule;\neach is refused for any other scope.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_time": {
+            "format": "time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "item_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pct": {
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pct",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DiscountScope"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "start_time",
+          "end_time",
+          "pct",
+          "scope"
+        ],
+        "title": "DiscountRuleCreate",
+        "type": "object"
+      },
+      "DiscountRuleOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "end_time": {
+            "format": "time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pct": {
+            "title": "Pct",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DiscountScope"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "start_time",
+          "end_time",
+          "pct",
+          "scope",
+          "category",
+          "item_ids",
+          "active",
+          "created_at"
+        ],
+        "title": "DiscountRuleOut",
+        "type": "object"
+      },
+      "DiscountRuleUpdate": {
+        "additionalProperties": false,
+        "description": "FR-22: change any of a rule's fields, or deactivate (and reactivate) it.\n\nChanging `scope` clears `category` and `item_ids` unless they are given too.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          }
+        },
+        "title": "DiscountRuleUpdate",
+        "type": "object"
+      },
+      "DiscountScope": {
+        "enum": [
+          "ALL",
+          "CATEGORY",
+          "ITEMS"
+        ],
+        "title": "DiscountScope",
+        "type": "string"
+      },
+      "EligibilityUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eligible"
+        ],
+        "title": "EligibilityUpdate",
+        "type": "object"
+      },
       "FlagRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2133,6 +2392,64 @@
         "title": "StaffCreate",
         "type": "object"
       },
+      "StudentOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "subsidy_eligible": {
+            "title": "Subsidy Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "is_active",
+          "subsidy_eligible"
+        ],
+        "title": "StudentOut",
+        "type": "object"
+      },
+      "SubsidySettings": {
+        "additionalProperties": false,
+        "description": "FR-23: P-SUBSIDY_AMT and P-SUBSIDY_CAP_PCT.\n\nAn eligible Student's first subsidised order of a day gets\nmin(amount_paise, cap_pct % of the discounted subtotal) off (FR-24 step 4).",
+        "properties": {
+          "amount_paise": {
+            "maximum": 50000.0,
+            "minimum": 0.0,
+            "title": "Amount Paise",
+            "type": "integer"
+          },
+          "cap_pct": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Cap Pct",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount_paise",
+          "cap_pct"
+        ],
+        "title": "SubsidySettings",
+        "type": "object"
+      },
       "TokenPair": {
         "properties": {
           "access_token": {
@@ -2711,6 +3028,139 @@
         "summary": "Search Audit",
         "tags": [
           "audit"
+        ]
+      }
+    },
+    "/api/v1/admin/discount-rules": {
+      "get": {
+        "description": "FR-22: every discount rule, active or not, by start time.",
+        "operationId": "list_discount_rules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiscountRuleOut"
+                  },
+                  "title": "Response List Discount Rules",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Discount Rules",
+        "tags": [
+          "pricing"
+        ]
+      },
+      "post": {
+        "description": "FR-22 / US-17: add a time-of-day discount; it is active immediately.\n\nIt applies to slots starting in [start_time, end_time). Rules may overlap; a\nline gets only the highest percentage among the rules that cover it (FR-24).",
+        "operationId": "create_discount_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          },
+          "422": {
+            "description": "Invalid input: percentage outside 1-50, an empty time range, a scope without its category or items, or an unknown item"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Discount Rule",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/discount-rules/{rule_id}": {
+      "patch": {
+        "description": "FR-22: edit a rule, or deactivate it with `active: false`.\n\nOrders already placed keep their price snapshots; only later quotes see the change.",
+        "operationId": "update_discount_rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          },
+          "404": {
+            "description": "No such discount rule"
+          },
+          "422": {
+            "description": "Invalid input, an unknown field, or no field to change"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Discount Rule",
+        "tags": [
+          "pricing"
         ]
       }
     },
@@ -3466,6 +3916,168 @@
         ]
       }
     },
+    "/api/v1/admin/students": {
+      "get": {
+        "description": "FR-23: Students by name, to find the one to mark eligible.\n\n`search` matches part of the name or email, ignoring case; `eligible`\nkeeps only Students who are (or are not) subsidy-eligible.",
+        "operationId": "list_students",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "eligible",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Eligible"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudentOut"
+                  },
+                  "title": "Response List Students",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Students",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/subsidy": {
+      "get": {
+        "description": "FR-23: the current P-SUBSIDY_AMT (in paise) and P-SUBSIDY_CAP_PCT.",
+        "operationId": "get_subsidy_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubsidySettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Subsidy Settings",
+        "tags": [
+          "pricing"
+        ]
+      },
+      "put": {
+        "description": "FR-23: set both subsidy parameters. An amount of 0 turns the subsidy off.\n\nOnly later quotes see the change; placed orders keep their price snapshots.",
+        "operationId": "set_subsidy_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubsidySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubsidySettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          },
+          "422": {
+            "description": "Amount outside 0-50000 paise or cap outside 0-100 %"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Subsidy Settings",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "description": "UC-03: every Kitchen Staff and Administrator account, active or not, by name.",
@@ -3603,6 +4215,71 @@
         "summary": "Deactivate Account",
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/eligibility": {
+      "put": {
+        "description": "FR-23 / US-18: mark a Student subsidy-eligible, or not.\n\nTheir next quote includes the subsidy if they have no subsidised order that\nday yet (FR-24 step 4). Staff accounts are not Students, so they get 404.",
+        "operationId": "set_subsidy_eligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EligibilityUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          },
+          "404": {
+            "description": "No such Student"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Subsidy Eligibility",
+        "tags": [
+          "pricing"
         ]
       }
     },

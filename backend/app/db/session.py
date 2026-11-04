@@ -47,9 +47,18 @@ def run_as_app_role(factory: sessionmaker[Session]) -> sessionmaker[Session]:
 def get_engine() -> Engine:
     # pool_pre_ping drops connections the database closed while it was away, so
     # service resumes on its own once it is back.
+    #
+    # A fixed pool with no overflow (CAFIITK-189). Overflow connections are closed as
+    # soon as they are returned, so under load nearly every checkout opened a new one:
+    # a TCP handshake, a forked backend and a SCRAM exchange each time (442 new
+    # connections in 30 s of reads, against 20 now). A request holds one connection
+    # at a time, so with no overflow the extra requests simply wait in the pool's queue.
+    settings = get_settings()
     return create_engine(
-        get_settings().database_url,
+        settings.database_url,
         pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=0,
         connect_args={"connect_timeout": CONNECT_TIMEOUT_S},
     )
 

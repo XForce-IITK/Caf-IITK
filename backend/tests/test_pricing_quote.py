@@ -65,6 +65,7 @@ def menu(engine: Engine) -> dict[str, Any]:
     )
     all_items = DiscountRule(
         id=uuid.uuid4(),
+        name="All items 10 %",
         start_time=time(12, 0),
         end_time=time(13, 0),
         pct=10,
@@ -72,6 +73,7 @@ def menu(engine: Engine) -> dict[str, Any]:
     )
     beverages = DiscountRule(
         id=uuid.uuid4(),
+        name="Beverages 20 %",
         start_time=time(12, 0),
         end_time=time(13, 0),
         pct=20,
@@ -311,6 +313,7 @@ def test_item_scoped_rule_applies_only_to_listed_items(
 ) -> None:
     tea_special = DiscountRule(
         id=uuid.uuid4(),
+        name="Tea special",
         start_time=time(12, 0),
         end_time=time(13, 0),
         pct=30,

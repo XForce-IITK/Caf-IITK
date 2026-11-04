@@ -89,22 +89,28 @@ class OrderRepository:
     def lock_inventory(
         self, item_ids: list[uuid.UUID], service_date: date
     ) -> dict[uuid.UUID, DailyInventory]:
+        """FOR NO KEY UPDATE, like lock_slot: the counters are not keys."""
         rows = self.session.scalars(
             select(DailyInventory)
             .where(
                 DailyInventory.item_id.in_(item_ids), DailyInventory.service_date == service_date
             )
             .order_by(DailyInventory.item_id)
-            .with_for_update()
+            .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         )
         return {row.item_id: row for row in rows}
 
     def lock_slot(self, slot_id: uuid.UUID) -> Slot:
+        """FOR NO KEY UPDATE: a placement inserts its order, whose foreign key takes
+        FOR KEY SHARE on the slot, before it locks the slot (CAFIITK-189). FOR UPDATE
+        would wait on every other placement's KEY SHARE, while they wait on this one's
+        inventory lock: a deadlock. Changing `booked` needs no stronger lock.
+        """
         return self.session.scalars(
             select(Slot)
             .where(Slot.id == slot_id)
-            .with_for_update()
+            .with_for_update(key_share=True)
             .execution_options(populate_existing=True)
         ).one()
 

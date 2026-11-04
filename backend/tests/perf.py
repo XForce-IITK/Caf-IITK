@@ -4,16 +4,19 @@ Each workload seeds its own Students, items and slots, sends real HTTP, and reco
 the latency of every request as the client sees it (connection, queueing and server
 time together). Before and after each workload it also scrapes caf-api's /metrics, for
 the server's own view: time per route and time waiting for row locks. Against the
-Compose stack:
+Compose stack, from a container on its network (on Docker Desktop, the port proxy
+from the host into the VM drops a few connections under this load):
 
-    cd backend
-    CAF_JWT_SECRET=<the stack's secret> .venv/bin/python tests/perf.py \\
-        --base-url http://localhost:8000 --mockpay-url http://localhost:8001 \\
-        --database-url postgresql+psycopg://caf:caf@localhost:5432/caf
+    docker run --rm --network caf-iitk_default -e CAF_JWT_SECRET=<the stack's secret> \\
+        -e PYTHONPATH=/srv:/srv/tests -v "$PWD/backend/tests:/srv/tests:ro" \\
+        --entrypoint python caf-iitk-api /srv/tests/perf.py --fresh \\
+        --base-url http://api:8000 --mockpay-url http://mockpay:8001 \\
+        --database-url postgresql+psycopg://caf:caf@db:5432/caf
 
 mockpay is set to approve at once, so order latency excludes any mock-payment delay
 (NFR-8). Like loadgen.py, it leaves its rows behind and sets P-MENU_OPEN to 00:00
-while it runs: point it at a development or test database only.
+while it runs, and --fresh empties the database: point it at a development or test
+database only.
 """
 
 import argparse
@@ -57,6 +60,8 @@ class Latencies:
 
     samples: list[float] = field(default_factory=list)
     statuses: Counter[int] = field(default_factory=Counter)
+    # Status 599: no response at all, counted here by what the client raised.
+    no_response: Counter[str] = field(default_factory=Counter)
 
     def add(self, ms: float, status: int) -> None:
         self.samples.append(ms)
@@ -78,7 +83,7 @@ class Latencies:
         )
 
     def row(self) -> dict[str, Any]:
-        return {
+        row = {
             "requests": len(self.samples),
             "p50_ms": round(self.percentile(50), 1),
             "p95_ms": round(self.percentile(95), 1),
@@ -87,6 +92,9 @@ class Latencies:
             "errors": self.errors,
             "statuses": dict(sorted(self.statuses.items())),
         }
+        if self.no_response:
+            row["no_response"] = dict(self.no_response)
+        return row
 
 
 @dataclass
@@ -115,8 +123,9 @@ async def _timed(latencies: Latencies, request: Awaitable[httpx.Response]) -> ht
     started = timer.perf_counter()
     try:
         response = await request
-    except httpx.HTTPError:
-        latencies.add((timer.perf_counter() - started) * 1000, 599)  # no response at all
+    except httpx.HTTPError as exc:
+        latencies.add((timer.perf_counter() - started) * 1000, 599)
+        latencies.no_response[type(exc).__name__] += 1
         return None
     latencies.add((timer.perf_counter() - started) * 1000, response.status_code)
     return response

@@ -59,6 +59,9 @@ class DiscountRule(Base):
     )
 
     id: Mapped[UuidPk]
+    # FR-22: shown to the Administrator, e.g. "Early bird".
+    name: Mapped[str] = mapped_column(String(60))
+    # IST wall-clock; the range is half-open [start_time, end_time) (E28).
     start_time: Mapped[time] = mapped_column(Time)
     end_time: Mapped[time] = mapped_column(Time)
     pct: Mapped[int] = mapped_column(Integer)
