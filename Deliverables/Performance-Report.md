@@ -381,11 +381,50 @@ The reads measured during NFR-12 also missed their target, with p95 1035–1397 
    This agrees with §3.2 and §3.7. For CAFIITK-189, it points at worker count and at running
    the load generator on another machine before any query is tuned.
 
-### 5.3 Status of US-31
+### 5.3 Re-run after CAFIITK-189
 
-**Not met** on the local stack: AC1 and AC2 both fail. CAFIITK-156 delivers the acceptance
-tests and this measurement. The criteria should be measured again with the same command:
-- after CAFIITK-189's changes;
-- and on AWS (CAFIITK-190), with the load generator off the instance.
+The tests were run again on the same machine with the same settings (2 workers, pool of 5),
+at commit `40f658f`. That is `develop` with CAFIITK-189's changes, merged into this branch.
+Both tests failed again.
 
-US-31 can be closed only when both tests pass there.
+| Criterion | Workload | Before 189: p95 / p99 ms | After 189: p95 / p99 ms | Errors after | Met |
+|---|---|---|---|---|---|
+| AC1 | NFR-8 orders | 737 / 847 | **570 / 615** | 0 | **no** (p95, by 70 ms) |
+| AC1 | NFR-12 orders | 1037 / 1333 | 1803 / 2047 (burst 8.2 s) | 0 | **no** |
+| AC2 | NFR-9 menu | 1795 / 2271 | 1078 / 2110 | **1** | **no** |
+| AC2 | NFR-9 slots | 1846 / 2308 | 1108 / 2077 | 0 | **no** |
+| AC2 | NFR-9 order history | 1762 / 2283 | 1075 / 2198 | 0 | **no** |
+| AC2 | NFR-9 kitchen queue | 1777 / 2466 | 1234 / 2173 | 0 | **no** |
+
+| Server side (`/metrics`) | Before 189 | After 189 |
+|---|---|---|
+| NFR-8 `daily_inventory` lock wait, mean | 190 ms | **15 ms** |
+| NFR-8 `POST /orders`, mean | 390 ms | 355 ms |
+| NFR-9 reads, mean of the four | 57–67 ms | 462–516 ms |
+
+**Reading the numbers.**
+- **The hot-row lock is solved.** Its wait fell from 190 ms to 15 ms, which agrees with
+  §3.5. NFR-8 is now 70 ms from its p95 target and meets its p99 target.
+- **Reads improved for the client** (p95 from about 1.8 s to about 1.1 s), but the server
+  now counts about 460 ms per read where it counted about 60 ms. The time moved inside the
+  measured window rather than disappearing. This fits requests now waiting for one of the
+  smaller pool's connections inside `caf-api` (§3.3), and the limit of §3.7: CPU across two
+  processes.
+- **The NFR-12 orders were slower** than before 189 in this single run. §3.5 shows how much
+  one run can vary on a laptop, so one run on each side cannot show a regression. AWS will
+  settle it.
+- **One read got no response.** A menu read ended in a `RemoteProtocolError` (the
+  connection closed without an answer), the first error in either of this section's runs.
+  §3.5 reports a similar `ReadError` on the base build. Under peak read load, a connection
+  can be dropped. This should be investigated, and raised as a Bug if it repeats.
+
+### 5.4 Status of US-31
+
+**Not met** on the local stack before or after CAFIITK-189: AC1 and AC2 both fail. AC1 is
+close (NFR-8 p95 570 ms against 500 ms). AC2 is about five times over its target.
+CAFIITK-156 delivers the acceptance tests and these two measurements.
+
+The criteria are to be measured again on AWS (CAFIITK-190) with the same command, with the
+load generator off the instance and `WEB_CONCURRENCY` set for its CPUs. US-31 is met only
+when both tests pass there. Whether NFR-9's "100 concurrent users" includes think time
+(§3.7, option 3) changes AC2's load, and is for the team to decide.
