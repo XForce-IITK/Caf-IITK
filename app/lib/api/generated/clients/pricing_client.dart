@@ -8,8 +8,11 @@ import 'package:retrofit/retrofit.dart';
 import '../models/discount_rule_create.dart';
 import '../models/discount_rule_out.dart';
 import '../models/discount_rule_update.dart';
+import '../models/eligibility_update.dart';
 import '../models/quote_out.dart';
 import '../models/quote_request.dart';
+import '../models/student_out.dart';
+import '../models/subsidy_settings.dart';
 
 part 'pricing_client.g.dart';
 
@@ -43,6 +46,47 @@ abstract class PricingClient {
   Future<DiscountRuleOut> updateDiscountRule({
     @Path('rule_id') required String ruleId,
     @Body() required DiscountRuleUpdate body,
+  });
+
+  /// List Students.
+  ///
+  /// FR-23: Students by name, to find the one to mark eligible.
+  ///
+  /// `search` matches part of the name or email, ignoring case; `eligible`.
+  /// keeps only Students who are (or are not) subsidy-eligible.
+  @GET('/api/v1/admin/students')
+  Future<List<StudentOut>> listStudents({
+    @Query('limit') int? limit = 50,
+    @Query('search') String? search,
+    @Query('eligible') bool? eligible,
+  });
+
+  /// Get Subsidy Settings.
+  ///
+  /// FR-23: the current P-SUBSIDY_AMT (in paise) and P-SUBSIDY_CAP_PCT.
+  @GET('/api/v1/admin/subsidy')
+  Future<SubsidySettings> getSubsidySettings();
+
+  /// Set Subsidy Settings.
+  ///
+  /// FR-23: set both subsidy parameters. An amount of 0 turns the subsidy off.
+  ///
+  /// Only later quotes see the change; placed orders keep their price snapshots.
+  @PUT('/api/v1/admin/subsidy')
+  Future<SubsidySettings> setSubsidySettings({
+    @Body() required SubsidySettings body,
+  });
+
+  /// Set Subsidy Eligibility.
+  ///
+  /// FR-23 / US-18: mark a Student subsidy-eligible, or not.
+  ///
+  /// Their next quote includes the subsidy if they have no subsidised order that.
+  /// day yet (FR-24 step 4). Staff accounts are not Students, so they get 404.
+  @PUT('/api/v1/admin/users/{user_id}/eligibility')
+  Future<StudentOut> setSubsidyEligibility({
+    @Path('user_id') required String userId,
+    @Body() required EligibilityUpdate body,
   });
 
   /// Create Quote.
