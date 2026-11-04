@@ -16,7 +16,9 @@ concurrency:
 
 jobs:
   jira-key:
-    name: Jira key in branch, commits and PR title
+    # The name is a required status check in the repository ruleset ("Default");
+    # renaming the job blocks every merge. It now also checks commits (NFR-44).
+    name: Jira key in branch and PR title
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
