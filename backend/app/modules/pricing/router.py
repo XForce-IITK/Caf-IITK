@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 
+from app.core.text import NulFreeStr
 from app.db.session import get_session
 from app.models.identity import User
 from app.modules.identity.dependencies import require_permission
@@ -167,7 +168,7 @@ def set_subsidy_settings(
 def list_students(
     admin: PricingAdmin,
     session: Annotated[Session, Depends(get_session)],
-    search: Annotated[str | None, Query(max_length=100)] = None,
+    search: Annotated[NulFreeStr | None, Query(max_length=100)] = None,
     eligible: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[StudentOut]:

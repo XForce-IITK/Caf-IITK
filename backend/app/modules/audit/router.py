@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.text import NulFreeStr
 from app.db.session import get_session
 from app.models.identity import User
 from app.modules.audit.schemas import AuditPageOut
@@ -13,7 +14,9 @@ from app.modules.identity.permissions import Permission
 
 router = APIRouter(tags=["audit"])
 
-Text = Annotated[str | None, Query(min_length=1, max_length=64)]
+MAX_BIGINT = 2**63 - 1
+
+Text = Annotated[NulFreeStr | None, Query(min_length=1, max_length=64)]
 
 
 @router.get(
@@ -31,7 +34,7 @@ def search_audit(
     actor_id: Text = None,
     entity_type: Text = None,
     entity_id: Annotated[
-        str | None,
+        NulFreeStr | None,
         Query(
             min_length=1,
             max_length=64,
@@ -40,7 +43,9 @@ def search_audit(
     ] = None,
     action: Text = None,
     before_id: Annotated[
-        int | None, Query(ge=1, description="next_before_id of the previous page.")
+        int | None,
+        # audit_log.id is a bigint; a larger value would fail inside the query.
+        Query(ge=1, le=MAX_BIGINT, description="next_before_id of the previous page."),
     ] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_AUDIT_PAGE)] = 50,
 ) -> AuditPageOut:

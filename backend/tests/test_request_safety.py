@@ -318,3 +318,28 @@ def test_tc_nfr23_4xx_responses_are_unchanged() -> None:
 
     assert client.get("/missing").json() == {"detail": "Order not found"}
     assert client.get("/no-such-route").json() == {"detail": "Not Found"}
+
+
+def test_an_audit_before_id_beyond_bigint_is_a_field_level_422(
+    db_client: TestClient, engine: Engine
+) -> None:
+    """CAFIITK-204: audit_log.id is a bigint; a larger cursor failed inside the query."""
+    admin = User(
+        id=uuid.uuid4(),
+        name="Admin",
+        email=f"{uuid.uuid4().hex[:8]}@iitk.ac.in",
+        password_hash="unused",
+        role=Role.ADMIN,
+    )
+    with Session(engine, expire_on_commit=False) as session, session.begin():
+        session.add(admin)
+    headers = {"Authorization": f"Bearer {create_access_token(admin.id, admin.role)}"}
+    client = TestClient(db_client.app, raise_server_exceptions=False)
+
+    too_big = client.get("/api/v1/admin/audit", params={"before_id": 2**63}, headers=headers)
+    largest = client.get("/api/v1/admin/audit", params={"before_id": 2**63 - 1}, headers=headers)
+
+    assert too_big.status_code == 422
+    [error] = too_big.json()["detail"]
+    assert error["loc"] == ["query", "before_id"]
+    assert largest.status_code == 200
