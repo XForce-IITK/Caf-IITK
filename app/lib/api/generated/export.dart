@@ -5,6 +5,7 @@
 // Clients
 export 'clients/agent_client.dart';
 export 'clients/audit_client.dart';
+export 'clients/pricing_client.dart';
 export 'clients/inventory_client.dart';
 export 'clients/catalogue_client.dart';
 export 'clients/ordering_client.dart';
@@ -12,7 +13,6 @@ export 'clients/proposals_client.dart';
 export 'clients/slots_client.dart';
 export 'clients/identity_client.dart';
 export 'clients/kitchen_client.dart';
-export 'clients/pricing_client.dart';
 export 'clients/ops_client.dart';
 // Data classes
 export 'models/account_out.dart';
@@ -27,6 +27,10 @@ export 'models/audit_entry_out.dart';
 export 'models/audit_page_out.dart';
 export 'models/cancel_order_request.dart';
 export 'models/cancelled_order_out.dart';
+export 'models/discount_rule_create.dart';
+export 'models/discount_rule_out.dart';
+export 'models/discount_rule_update.dart';
+export 'models/discount_scope.dart';
 export 'models/flag_request.dart';
 export 'models/http_validation_error.dart';
 export 'models/inventory_out.dart';
