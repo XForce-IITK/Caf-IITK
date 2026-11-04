@@ -12,6 +12,13 @@ Update of the SRS v2.0 §6.3 full matrix at the end of Sprint 2. The columns are
   - **Partial:** only part of the requirement is tested yet.
   - **Not run:** not built or not yet tested. Most of these are planned for Sprints 3 and 4.
 
+**Sprint 3 updates so far.** The rows for FR-34, FR-38, NFR-3, NFR-6, NFR-8 – NFR-12 and NFR-14 – NFR-16 were updated after CAFIITK-149, 161, 157, 184, 188 and 189. They pass in CI on `develop` at `b1de127` (run 41890358413).
+- With FR-34 passing, all 10 critical (★) requirements pass.
+- Two kinds of result are new:
+  - **Fail:** tested, but not meeting the target.
+  - **Met on the local stack:** measured by analysis (method A) and within target on Docker Compose, with the numbers of record still to come from AWS.
+- The summary below is still the Sprint 2 snapshot. CAFIITK-193 completes the matrix, and its counts, for D3.
+
 **Summary**
 
 | | Pass | Partial | Not run | Total |
@@ -58,11 +65,11 @@ Of the 10 critical (★) requirements, 9 pass: FR-7, FR-24, FR-30, FR-32, FR-35,
 | FR-31 |  | Should | T | UC-11 | US-26 | CAFIITK-47 (To Do), CAFIITK-151 | TC-US26-AC1…AC2 | Integration | — | Not run |
 | FR-32 | ★ | Must | T | UC-11 | US-25 | CAFIITK-48 (Done), CAFIITK-150 | TC-US25-AC1…AC3 | Integration | #12 | Pass |
 | FR-33 |  | Must | T | UC-11 | US-22, US-23 | CAFIITK-49 (Done), CAFIITK-147, CAFIITK-148 | TC-US22-AC1…AC3, TC-US23-AC1…AC3 | Integration | #6, #15, #17 | Pass |
-| FR-34 | ★ | Must | T | UC-15 | US-24 | CAFIITK-50 (To Do), CAFIITK-149 | TC-US24-AC1…AC3 | Integration | — | Not run |
+| FR-34 | ★ | Must | T | UC-15 | US-24 | CAFIITK-50 (Done), CAFIITK-149 | TC-US24-AC1…AC3 | Integration | #68 | Pass |
 | FR-35 | ★ | Must | T | UC-12 | US-27 | CAFIITK-51 (Done), CAFIITK-152 | TC-US27-AC1…AC5 | Integration | #44, #54, #61 | Pass |
 | FR-36 |  | Must | T | UC-12 | US-27 | CAFIITK-52 (Done), CAFIITK-152 | TC-US27-AC1…AC5 | Integration | #44, #54, #61 | Pass |
 | FR-37 |  | Must | T | UC-13 | US-28 | CAFIITK-53 (Done), CAFIITK-153 | TC-US28-AC1…AC5 | Integration | #39 | Pass |
-| FR-38 |  | Should | T | UC-20 | US-36 | CAFIITK-54 (To Do), CAFIITK-161 | TC-US36-AC1…AC2 | Integration | — | Not run |
+| FR-38 |  | Should | T | UC-20 | US-36 | CAFIITK-54 (Done), CAFIITK-161 | TC-US36-AC1…AC2 | Integration | #70 | Pass |
 | FR-39 | ★ | Must | T | UC-13, UC-20 | US-28 | CAFIITK-55 (Done), CAFIITK-153 | TC-US28-AC1…AC5 | Integration | #39 | Pass |
 | FR-40 |  | Must | T, D | UC-14 | US-29 | CAFIITK-56 (Done), CAFIITK-154 | TC-US29-AC1…AC2 | Integration, E2E | #31 | Pass |
 | FR-41 |  | Must | T, D | UC-11 | US-23 | CAFIITK-57 (Done), CAFIITK-148 | TC-US23-AC1…AC3 | Integration | #6, #17 | Pass |
@@ -91,20 +98,20 @@ Of the 10 critical (★) requirements, 9 pass: FR-7, FR-24, FR-30, FR-32, FR-35,
 | FR-64 |  | Should | T | UC-23 | US-43 | CAFIITK-80 (Done), CAFIITK-168 | TC-US43-AC1…AC3 | Integration | #42 | Pass |
 | NFR-1 | ★ | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-81 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
 | NFR-2 |  | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-82 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
-| NFR-3 |  | Must | T | — | — | CAFIITK-83 (To Do) | TC-NFR3 | Concurrency | — | Not run |
+| NFR-3 |  | Must | T | — | — | CAFIITK-83 (Done), CAFIITK-184 | TC-NFR3 — a fault at every statement of nine write operations (`test_failure_injection.py`) | Concurrency | #77 | Pass |
 | NFR-4 |  | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-84 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
 | NFR-5 |  | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-85 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
-| NFR-6 |  | Must | I, T | — | — | CAFIITK-86 (To Do) | TC-NFR6 | Concurrency | — | Not run |
+| NFR-6 |  | Must | I, T | — | — | CAFIITK-86 (Done), CAFIITK-184 | TC-NFR6 — no pooled connection checked out at any gateway or LLM call (`test_failure_injection.py`) | Concurrency | #77 | Pass |
 | NFR-7 |  | Must | T | UC-11 | US-25 | CAFIITK-87 (Done), CAFIITK-150 | TC-US25-AC1…AC3 | Concurrency | #12 | Pass |
-| NFR-8 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-88 (To Do), CAFIITK-156 | TC-US31-AC1…AC2 | Performance | — | Not run |
-| NFR-9 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-89 (To Do), CAFIITK-156 | TC-US31-AC1…AC2 | Performance | — | Not run |
-| NFR-10 |  | Should | A | — | — | CAFIITK-90 (To Do) | TC-NFR10 | Performance | — | Not run |
-| NFR-11 |  | Should | A | — | — | CAFIITK-91 (To Do) | TC-NFR11 | Performance | — | Not run |
-| NFR-12 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-92 (To Do), CAFIITK-156 | TC-US31-AC1…AC2 | Performance | — | Not run |
+| NFR-8 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-88 (To Do), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
+| NFR-9 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-89 (To Do), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
+| NFR-10 |  | Should | A | — | — | CAFIITK-90 (To Do), CAFIITK-188 | TC-NFR10 — `tests/perf.py` workload `nfr10` | Performance | #89, #91 | Met on the local stack: 0 errors at 20 orders/s in every run (Performance Report §3); AWS run pending |
+| NFR-11 |  | Should | A | — | — | CAFIITK-91 (To Do), CAFIITK-188 | TC-NFR11 — `tests/perf.py` workload `nfr11` | Performance | #89 | Partial: the heuristic run takes 0.04–0.07 s (≤ 5 s); the LLM run is not measured, as no key is set on the local stack |
+| NFR-12 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-92 (To Do), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
 | NFR-13 |  | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-93 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
-| NFR-14 |  | Must | T | UC-11 | US-23 | CAFIITK-94 (To Do), CAFIITK-148 | TC-US23-AC1…AC3 | Failure/Recovery | #6, #17 | Partial: payment failure and timeout pass (TC-US23); release after a crash needs the hold sweeper (US-24, Sprint 3) |
-| NFR-15 |  | Must | T, D | UC-15 | US-24 | CAFIITK-95 (To Do), CAFIITK-149 | TC-US24-AC1…AC3 | Failure/Recovery | — | Not run |
-| NFR-16 |  | Must | T, D | cross-cutting | US-32 | CAFIITK-96 (To Do), CAFIITK-157 | TC-US32-AC1…AC2 | Failure/Recovery | — | Not run |
+| NFR-14 |  | Must | T | UC-11 | US-23 | CAFIITK-94 (Done), CAFIITK-148, CAFIITK-149 | TC-US23-AC1…AC3 | Failure/Recovery | #6, #17, #68 | Pass: payment failure and timeout (TC-US23); release after a crash (TC-US24-AC1, #68) |
+| NFR-15 |  | Must | T, D | UC-15 | US-24 | CAFIITK-95 (Done), CAFIITK-149 | TC-US24-AC1…AC3 | Failure/Recovery | #68 | Pass; demonstrated on Docker Compose by killing caf-api mid-payment (#68) |
+| NFR-16 |  | Must | T, D | cross-cutting | US-32 | CAFIITK-96 (Done), CAFIITK-157 | TC-US32-AC1…AC2 | Failure/Recovery | #73 | Pass; demonstrated on Docker Compose by stopping and starting `db` (#73) |
 | NFR-17 |  | Must | T | UC-23 | US-43 | CAFIITK-97 (Done), CAFIITK-168 | TC-US43-AC1…AC3 | Failure/Recovery | #42 | Pass |
 | NFR-18 |  | Should | T | UC-11 | US-25 | CAFIITK-98 (Done), CAFIITK-150 | TC-US25-AC1…AC3 | Failure/Recovery | #12 | Pass |
 | NFR-19 |  | Must | T | UC-02 | US-02 | CAFIITK-99 (Done), CAFIITK-127 | TC-US02-AC1…AC4 | Security | #5 | Pass |

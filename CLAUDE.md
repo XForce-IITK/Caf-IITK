@@ -4,11 +4,52 @@ Campus cafeteria pre-order and pickup-slot platform. CS455 Software Engineering 
 
 ## Current state
 
-Sprint 1 is merged; Sprint 2 (ends 14 Oct 2026) is in progress. See `README.md` for commands. `Deliverables/` holds the proposal, SRS (v2.0), SADD, project management report and AI Engineering Log. The SRS and SADD are the source of truth for behaviour and design; read the relevant section before implementing anything.
+Sprints 1 and 2 are merged and released (D2). Sprint 3 ends with Deliverable 3 on 6 Nov 2026 and is closing out.
+- **Work still open:**
+  - the AWS deployment (CAFIITK-190), after which come the performance rerun of record and cost tracking (191);
+  - the Android build (192);
+  - the security campaign (185) and its bugs;
+  - the final regression, traceability matrix and release (193, 197).
+- **Commands:** see `README.md`.
+- **`Deliverables/`** holds the proposal, SRS (v2.0), SADD, project management report, AI Engineering Log, `Requirements-Traceability.md` and `Performance-Report.md`.
+- **Source of truth:** the SRS and SADD for behaviour and design; read the relevant section before implementing anything.
 
-Backend (`backend/`): module packages under `app/modules/` (`identity`, `catalogue`, `inventory`, `slots`, `pricing`, `ordering`, `payments`, `audit`, `kitchen`, `proposals`, `agent`), Alembic migrations from `0001` (all core tables from SADD Figure 2.5) onwards, `mockpay` as a separate service, and `caf-worker` (`app/worker/`, leader-locked; modules register their jobs there). Working endpoints: register, login, refresh, logout, `me`; onboard an item, flag it unavailable, browse the menu; set daily inventory; configure a service day and browse slots; price quote; place, track, cancel and modify an order (with idempotency keys); the kitchen queue; agent runs, and approving or rejecting their proposals. Not built yet: kitchen transitions and auto-prep, the hold sweeper, audit search.
+Backend (`backend/`):
+- **Layout:**
+  - module packages under `app/modules/`: `identity`, `catalogue`, `inventory`, `slots`, `pricing`, `ordering`, `payments`, `audit`, `kitchen`, `proposals`, `agent`;
+  - Alembic migrations from `0001` (all core tables from SADD Figure 2.5) onwards;
+  - `mockpay` as a separate service;
+  - `caf-worker` (`app/worker/`, leader-locked; modules register their jobs there).
+- **Worker jobs:** the hold sweeper, the payment outbox (voids and refunds), auto-prep, agent runs and schedule, proposal expiry, rate-limit clean-up.
+- **Student and Kitchen endpoints:**
+  - register, login, refresh, logout, `me`;
+  - browse the menu and slots, price quote;
+  - place, track, cancel and modify an order (with idempotency keys);
+  - the kitchen queue and its transitions.
+- **Administrator endpoints:**
+  - items: onboard, edit, remove, flag unavailable;
+  - daily inventory, service days and slot capacity;
+  - cancel any order;
+  - order list and utilisation;
+  - audit search;
+  - discount rules, subsidy settings and eligibility;
+  - staff accounts;
+  - agent runs and proposal decisions.
+- **Ops endpoints, outside `/api/v1`:** `/health`, `/ready`, `/metrics`.
+- **Cross-cutting behaviour:**
+  - a lost database connection is a 503 with `Retry-After` (`app/core/errors.py`);
+  - JSON logs carry a correlation ID;
+  - every application transaction runs as the `caf_app` role (migration 0005);
+  - the connection pool is fixed with no overflow (`CAF_DB_POOL_SIZE`), and `WEB_CONCURRENCY` sets the gunicorn workers.
+- **Performance harness:** `tests/perf.py`; see `Performance-Report.md` for how to run it.
 
-Client (`app/`): the API client in `lib/api/generated/` is generated from `app/openapi.json`; login, register and role-based routing in `lib/auth/` and `lib/router.dart`; Dio interceptors in `lib/api/interceptors.dart`; the Student flow in `lib/student/` (order, track, cancel, modify). The Kitchen and Administrator dashboards are placeholders.
+Client (`app/`):
+- the API client in `lib/api/generated/` is generated from `app/openapi.json`;
+- login, register and role-based routing in `lib/auth/` and `lib/router.dart`;
+- Dio interceptors in `lib/api/interceptors.dart`;
+- the Student flow in `lib/student/`;
+- the Kitchen dashboard in `lib/kitchen/`;
+- the Administrator dashboard in `lib/admin/`: items, service day, monitoring, staff, agent and proposals.
 
 Backend choices made in the skeleton: synchronous SQLAlchemy with psycopg 3 (FastAPI runs sync endpoints in a threadpool); deploy-time settings come from `CAF_*` environment variables (`app/core/config.py`); administrator-configurable parameters (SRS Table 4.0-B) are seeded into the `settings` table.
 
