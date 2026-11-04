@@ -1,7 +1,7 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,11 @@ from app.modules.pricing.schemas import (
     DiscountRuleCreate,
     DiscountRuleOut,
     DiscountRuleUpdate,
+    EligibilityUpdate,
     QuoteOut,
     QuoteRequest,
+    StudentOut,
+    SubsidySettings,
 )
 from app.modules.pricing.service import (
     QuantityLimitError,
@@ -27,6 +30,7 @@ from app.modules.pricing.service import (
     SlotNotFoundError,
     UnknownItemsError,
 )
+from app.modules.pricing.subsidy import StudentNotFoundError, SubsidyService
 
 router = APIRouter(tags=["pricing"])
 
@@ -127,3 +131,72 @@ def update_discount_rule(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Discount rule not found") from None
     except InvalidRuleError as exc:
         raise _invalid(exc) from None
+
+
+_SUBSIDY_FORBIDDEN: dict[int | str, dict[str, Any]] = {
+    403: {"description": "Only the Administrator manages the subsidy"}
+}
+
+
+@router.get("/admin/subsidy", responses=_SUBSIDY_FORBIDDEN)
+def get_subsidy_settings(
+    admin: PricingAdmin, session: Annotated[Session, Depends(get_session)]
+) -> SubsidySettings:
+    """FR-23: the current P-SUBSIDY_AMT (in paise) and P-SUBSIDY_CAP_PCT."""
+    return SubsidyService(session).get_settings()
+
+
+@router.put(
+    "/admin/subsidy",
+    responses={
+        **_SUBSIDY_FORBIDDEN,
+        422: {"description": "Amount outside 0-50000 paise or cap outside 0-100 %"},
+    },
+)
+def set_subsidy_settings(
+    body: SubsidySettings, admin: PricingAdmin, session: Annotated[Session, Depends(get_session)]
+) -> SubsidySettings:
+    """FR-23: set both subsidy parameters. An amount of 0 turns the subsidy off.
+
+    Only later quotes see the change; placed orders keep their price snapshots.
+    """
+    return SubsidyService(session).set_settings(admin, body)
+
+
+@router.get("/admin/students", responses=_SUBSIDY_FORBIDDEN)
+def list_students(
+    admin: PricingAdmin,
+    session: Annotated[Session, Depends(get_session)],
+    search: Annotated[str | None, Query(max_length=100)] = None,
+    eligible: bool | None = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> list[StudentOut]:
+    """FR-23: Students by name, to find the one to mark eligible.
+
+    `search` matches part of the name or email, ignoring case; `eligible`
+    keeps only Students who are (or are not) subsidy-eligible.
+    """
+    return SubsidyService(session).list_students(
+        search=search.strip() if search else None, eligible=eligible, limit=limit
+    )
+
+
+@router.put(
+    "/admin/users/{user_id}/eligibility",
+    responses={**_SUBSIDY_FORBIDDEN, 404: {"description": "No such Student"}},
+)
+def set_subsidy_eligibility(
+    user_id: uuid.UUID,
+    body: EligibilityUpdate,
+    admin: PricingAdmin,
+    session: Annotated[Session, Depends(get_session)],
+) -> StudentOut:
+    """FR-23 / US-18: mark a Student subsidy-eligible, or not.
+
+    Their next quote includes the subsidy if they have no subsidised order that
+    day yet (FR-24 step 4). Staff accounts are not Students, so they get 404.
+    """
+    try:
+        return SubsidyService(session).set_eligibility(admin, user_id, eligible=body.eligible)
+    except StudentNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Student not found") from None

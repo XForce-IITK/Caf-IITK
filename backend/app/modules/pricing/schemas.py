@@ -14,12 +14,15 @@ from pydantic import (
 
 from app.core.text import NoNul
 from app.models.enums import DiscountScope, ItemCategory
+from app.modules.catalogue.schemas import MAX_PRICE_PAISE
 
 # FR-22: 1-50 %. Mirrors the discount_rules pct_range CHECK.
 MIN_DISCOUNT_PCT = 1
 MAX_DISCOUNT_PCT = 50
 # An ITEMS rule lists at most the whole catalogue (30 active items, SRS 1.3).
 MAX_RULE_ITEMS = 30
+# FR-23: P-SUBSIDY_AMT is at most the dearest item allowed (FR-6); 0 turns the subsidy off.
+MAX_SUBSIDY_PAISE = MAX_PRICE_PAISE
 
 
 class QuoteLineIn(BaseModel):
@@ -147,3 +150,32 @@ class DiscountRuleOut(BaseModel):
     item_ids: list[uuid.UUID]
     active: bool
     created_at: datetime
+
+
+class SubsidySettings(BaseModel):
+    """FR-23: P-SUBSIDY_AMT and P-SUBSIDY_CAP_PCT.
+
+    An eligible Student's first subsidised order of a day gets
+    min(amount_paise, cap_pct % of the discounted subtotal) off (FR-24 step 4).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount_paise: Annotated[int, Field(ge=0, le=MAX_SUBSIDY_PAISE)]
+    cap_pct: Annotated[int, Field(ge=0, le=100)]
+
+
+class EligibilityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    eligible: bool
+
+
+class StudentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    email: str
+    is_active: bool
+    subsidy_eligible: bool
