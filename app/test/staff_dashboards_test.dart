@@ -1105,6 +1105,423 @@ void main() {
       expect(_text(tester, 'admin-slot-s2'), '12:15 – 12:30 · 20 seats left');
     });
 
+    group('discount rules (US-17)', () {
+      const rulesUrl = '/api/v1/admin/discount-rules';
+      Map<String, Object?> rule(
+        String id,
+        String name, {
+        String scope = 'ALL',
+        String? category,
+        List<String> items = const [],
+        bool active = true,
+        int pct = 20,
+      }) => {
+        'id': id,
+        'name': name,
+        'start_time': '14:00:00',
+        'end_time': '15:00:00',
+        'pct': pct,
+        'scope': scope,
+        'category': category,
+        'item_ids': items,
+        'active': active,
+        'created_at': '2026-10-06T04:00:00Z',
+      };
+      late List<Map<String, Object?>> rules;
+
+      setUp(() {
+        rules = [
+          rule('r1', 'Late lunch'),
+          rule('r2', 'Snack hour', scope: 'CATEGORY', category: 'SNACK'),
+          rule('r3', 'Thali deal', scope: 'ITEMS', items: ['thali']),
+          rule('r4', 'Old offer', active: false),
+        ];
+        cafe.routes[rulesUrl] = (r) {
+          if (r.method == 'GET') return Reply(200, rules);
+          final body = r.data! as Map<String, Object?>;
+          final created = {
+            ...rule('new', body['name']! as String),
+            ...body,
+            'start_time': '${body['start_time']}:00',
+            'end_time': '${body['end_time']}:00',
+          };
+          rules = [...rules, created];
+          return Reply(201, created);
+        };
+        cafe.routes['$rulesUrl/*'] = (r) {
+          final id = r.path.split('/').last;
+          final body = r.data! as Map<String, Object?>;
+          final updated = {
+            ...rules.firstWhere((x) => x['id'] == id),
+            ...body,
+            'start_time': '${body['start_time']}:00',
+            'end_time': '${body['end_time']}:00',
+          };
+          rules = [for (final x in rules) x['id'] == id ? updated : x];
+          return Reply(200, updated);
+        };
+      });
+
+      Future<void> fill(
+        WidgetTester tester, {
+        String name = 'Tea time',
+        String start = '16:00',
+        String end = '17:00',
+        String pct = '15',
+      }) async {
+        await tester.enterText(find.byKey(const Key('rule-name')), name);
+        await tester.enterText(find.byKey(const Key('rule-start')), start);
+        await tester.enterText(find.byKey(const Key('rule-end')), end);
+        await tester.enterText(find.byKey(const Key('rule-pct')), pct);
+      }
+
+      Future<void> scope(WidgetTester tester, String label) async {
+        final segment = find.descendant(
+          of: find.byKey(const Key('rule-scope')),
+          matching: find.text(label),
+        );
+        await tester.ensureVisible(segment);
+        await tester.tap(segment);
+        await tester.pumpAndSettle();
+      }
+
+      Iterable<Seen> posts() =>
+          cafe.server.to(rulesUrl).where((r) => r.method == 'POST');
+
+      testWidgets('the tab lists every rule with its window, scope and '
+          'status', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        expect(find.text('Late lunch · 20% off'), findsOneWidget);
+        expect(_text(tester, 'rule-summary-r1'), '14:00–15:00 · All items');
+        expect(
+          _text(tester, 'rule-summary-r2'),
+          '14:00–15:00 · Category: Snack',
+        );
+        expect(_text(tester, 'rule-summary-r3'), '14:00–15:00 · Items: Thali');
+        expect(
+          _text(tester, 'rule-summary-r4'),
+          '14:00–15:00 · All items · Inactive',
+        );
+        expect(find.text('Reactivate'), findsOneWidget);
+      });
+
+      testWidgets('TC-US17-AC1: adding a rule checks it, sends it and lists '
+          'it', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        await fill(tester, pct: '60');
+        await _tap(tester, 'save-rule');
+        expect(
+          _text(tester, 'rule-message'),
+          'The discount must be a whole number from 1 to 50 %.',
+        );
+        await fill(tester, start: '17:00', end: '16:00');
+        await _tap(tester, 'save-rule');
+        expect(
+          _text(tester, 'rule-message'),
+          'The end must be after the start.',
+        );
+        expect(posts(), isEmpty);
+
+        await fill(tester);
+        await _tap(tester, 'save-rule');
+
+        expect(posts().single.data, {
+          'name': 'Tea time',
+          'start_time': '16:00',
+          'end_time': '17:00',
+          'pct': 15,
+          'scope': 'ALL',
+          'category': null,
+          'item_ids': <Object?>[],
+        });
+        expect(
+          _text(tester, 'rule-message'),
+          'Tea time is active: 15% off from 16:00 to 17:00.',
+        );
+        expect(find.byKey(const Key('rule-new')), findsOneWidget);
+      });
+
+      testWidgets('a category rule needs a category and sends it', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        await fill(tester);
+        await scope(tester, 'A category');
+        await _tap(tester, 'save-rule');
+        expect(
+          _text(tester, 'rule-message'),
+          'Choose the category the rule applies to.',
+        );
+
+        await _tap(tester, 'rule-category-BEVERAGE');
+        await _tap(tester, 'save-rule');
+
+        final sent = posts().single.data! as Map;
+        expect(sent['scope'], 'CATEGORY');
+        expect(sent['category'], 'BEVERAGE');
+        expect(sent['item_ids'], <Object?>[]);
+      });
+
+      testWidgets('an items rule sends the chosen items', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        await fill(tester);
+        await scope(tester, 'Chosen items');
+        await _tap(tester, 'save-rule');
+        expect(_text(tester, 'rule-message'), 'Choose at least one item.');
+
+        await _tap(tester, 'rule-item-dosa');
+        await _tap(tester, 'save-rule');
+
+        final sent = posts().single.data! as Map;
+        expect(sent['scope'], 'ITEMS');
+        expect(sent['category'], null);
+        expect(sent['item_ids'], ['dosa']);
+      });
+
+      testWidgets('deactivating sends the whole rule with active false', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        await _tap(tester, 'toggle-rule-r2');
+
+        // Every field, since the server refuses nulls other than category.
+        expect(cafe.server.to('$rulesUrl/r2').single.data, {
+          'name': 'Snack hour',
+          'start_time': '14:00',
+          'end_time': '15:00',
+          'pct': 20,
+          'scope': 'CATEGORY',
+          'category': 'SNACK',
+          'item_ids': <Object?>[],
+          'active': false,
+        });
+        expect(
+          _text(tester, 'rule-summary-r2'),
+          '14:00–15:00 · Category: Snack · Inactive',
+        );
+      });
+
+      testWidgets('editing fills the form from the rule and saves it', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        await _tap(tester, 'edit-rule-r1');
+        expect(find.text('Edit Late lunch'), findsOneWidget);
+        expect(
+          tester
+              .widget<TextField>(find.byKey(const Key('rule-start')))
+              .controller!
+              .text,
+          '14:00',
+        );
+        await tester.enterText(find.byKey(const Key('rule-pct')), '25');
+        await _tap(tester, 'save-rule');
+
+        final sent = cafe.server.to('$rulesUrl/r1').single.data! as Map;
+        expect(
+          (sent['pct'], sent['active'], sent['name']),
+          (25, true, 'Late lunch'),
+        );
+        expect(find.text('Late lunch is updated.'), findsOneWidget);
+        expect(find.text('Add a discount rule'), findsOneWidget);
+        expect(find.text('Late lunch · 25% off'), findsOneWidget);
+      });
+
+      testWidgets("a refused rule shows the server's reason", (tester) async {
+        cafe.routes[rulesUrl] = (r) => r.method == 'GET'
+            ? Reply(200, rules)
+            : const Reply(422, {
+                'detail': [
+                  {
+                    'loc': ['body', 'item_ids'],
+                    'msg': 'unknown or removed items: dosa',
+                    'type': 'value_error',
+                  },
+                ],
+              });
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-discounts');
+
+        await fill(tester);
+        await _tap(tester, 'save-rule');
+
+        expect(_text(tester, 'rule-message'), contains('unknown or removed'));
+      });
+    });
+
+    group('subsidy (US-18)', () {
+      const subsidyUrl = '/api/v1/admin/subsidy';
+      const studentsUrl = '/api/v1/admin/students';
+      Map<String, Object?> student(String id, String name, bool eligible) => {
+        'id': id,
+        'name': name,
+        'email': '$id@iitk.ac.in',
+        'is_active': true,
+        'subsidy_eligible': eligible,
+      };
+      late Map<String, Object?> settings;
+      late List<Map<String, Object?>> students;
+
+      setUp(() {
+        settings = {'amount_paise': 2000, 'cap_pct': 50};
+        students = [
+          student('asha', 'Asha', true),
+          student('bala', 'Bala', false),
+        ];
+        cafe.routes[subsidyUrl] = (r) {
+          if (r.method == 'PUT') settings = r.data! as Map<String, Object?>;
+          return Reply(200, settings);
+        };
+        cafe.routes[studentsUrl] = (r) {
+          final query = r.options.queryParameters;
+          final search = (query['search'] as String?)?.toLowerCase() ?? '';
+          return Reply(200, [
+            for (final s in students)
+              if ((s['name']! as String).toLowerCase().contains(search) &&
+                  (query['eligible'] != true || s['subsidy_eligible'] == true))
+                s,
+          ]);
+        };
+        cafe.routes['/api/v1/admin/users/*'] = (r) {
+          final id = r.path.split('/')[5];
+          final eligible = (r.data! as Map)['eligible'] as bool;
+          students = [
+            for (final s in students)
+              s['id'] == id ? {...s, 'subsidy_eligible': eligible} : s,
+          ];
+          return Reply(200, students.firstWhere((s) => s['id'] == id));
+        };
+      });
+
+      bool switchOn(WidgetTester tester, String key) =>
+          tester.widget<SwitchListTile>(find.byKey(Key(key))).value;
+
+      testWidgets('the tab shows the current settings and saves new ones in '
+          'paise', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-subsidy');
+
+        String field(String key) =>
+            tester.widget<TextField>(find.byKey(Key(key))).controller!.text;
+        expect((field('subsidy-amount'), field('subsidy-cap')), ('20', '50'));
+
+        await tester.enterText(find.byKey(const Key('subsidy-amount')), '12.5');
+        await tester.enterText(find.byKey(const Key('subsidy-cap')), '40');
+        await _tap(tester, 'save-subsidy');
+
+        final sent = cafe.server.to(subsidyUrl).where((r) => r.method == 'PUT');
+        expect(sent.single.data, {'amount_paise': 1250, 'cap_pct': 40});
+        expect(
+          _text(tester, 'subsidy-message'),
+          'Saved: ₹12.50 off, at most 40% of the order.',
+        );
+      });
+
+      testWidgets('an amount over ₹500 or a cap over 100 % is not sent', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-subsidy');
+
+        await tester.enterText(find.byKey(const Key('subsidy-amount')), '501');
+        await _tap(tester, 'save-subsidy');
+        expect(
+          _text(tester, 'subsidy-message'),
+          'Enter an amount from ₹0 to ₹500.',
+        );
+        await tester.enterText(find.byKey(const Key('subsidy-amount')), '20');
+        await tester.enterText(find.byKey(const Key('subsidy-cap')), '101');
+        await _tap(tester, 'save-subsidy');
+        expect(
+          _text(tester, 'subsidy-message'),
+          'Enter a cap from 0 to 100 %.',
+        );
+
+        expect(
+          cafe.server.to(subsidyUrl).where((r) => r.method == 'PUT'),
+          isEmpty,
+        );
+      });
+
+      testWidgets('an amount of 0 turns the subsidy off', (tester) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-subsidy');
+
+        await tester.enterText(find.byKey(const Key('subsidy-amount')), '0');
+        await _tap(tester, 'save-subsidy');
+
+        expect(_text(tester, 'subsidy-message'), 'The subsidy is off.');
+      });
+
+      testWidgets('TC-US18-AC1: marking a Student eligible sends it', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-subsidy');
+
+        expect(switchOn(tester, 'eligible-asha'), isTrue);
+        expect(switchOn(tester, 'eligible-bala'), isFalse);
+
+        await _tap(tester, 'eligible-bala');
+
+        expect(
+          cafe.server.to('/api/v1/admin/users/bala/eligibility').single.data,
+          {'eligible': true},
+        );
+        expect(switchOn(tester, 'eligible-bala'), isTrue);
+      });
+
+      testWidgets('Students can be searched and filtered to the eligible', (
+        tester,
+      ) async {
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-subsidy');
+
+        await tester.enterText(find.byKey(const Key('student-search')), 'bal');
+        await _tap(tester, 'student-search-go');
+        expect(
+          cafe.server.to(studentsUrl).last.options.queryParameters['search'],
+          'bal',
+        );
+        expect(find.byKey(const Key('student-asha')), findsNothing);
+        expect(find.byKey(const Key('student-bala')), findsOneWidget);
+
+        await tester.enterText(find.byKey(const Key('student-search')), '');
+        await _tap(tester, 'student-search-go');
+        await _tap(tester, 'eligible-only');
+        expect(
+          cafe.server.to(studentsUrl).last.options.queryParameters['eligible'],
+          true,
+        );
+        expect(find.byKey(const Key('student-asha')), findsOneWidget);
+        expect(find.byKey(const Key('student-bala')), findsNothing);
+      });
+
+      testWidgets("a refused change shows the server's reason", (tester) async {
+        cafe.routes['/api/v1/admin/users/*'] = (_) =>
+            const Reply(404, {'detail': 'Student not found'});
+        await cafe.open(tester);
+        await _openTab(tester, 'tab-subsidy');
+
+        await _tap(tester, 'eligible-bala');
+
+        expect(_text(tester, 'student-message-bala'), 'Student not found');
+        expect(switchOn(tester, 'eligible-bala'), isFalse);
+      });
+    });
+
     group('monitoring the day (US-37)', () {
       const ordersUrl = '/api/v1/admin/orders';
       const utilisationUrl = '/api/v1/admin/utilisation';
