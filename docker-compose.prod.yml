@@ -1,5 +1,5 @@
-# AWS stack (CAFIITK-190): caf-api, caf-worker, mockpay and nginx on one EC2 instance,
-# PostgreSQL on RDS. The backend image and Alembic migrations are the ones
+# AWS stack (CAFIITK-190): caf-api, caf-worker, mockpay and nginx on one EC2 instance
+# behind CloudFront, PostgreSQL on RDS. The backend image and Alembic migrations are the ones
 # docker-compose.yml uses; only configuration differs (NFR-40).
 # Usage on the instance: see deploy/README.md.
 
@@ -87,18 +87,15 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  # TLS termination, the Flutter web build, and the API on the same origin (NFR-27).
+  # The origin behind CloudFront, which terminates TLS (NFR-27): the Flutter web
+  # build and the API on the same origin.
   nginx:
     image: nginx:1.27-alpine
-    environment:
-      CAF_HOST: ${CAF_HOST}
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./app/build/web:/usr/share/nginx/html:ro
-      - ${CAF_CERT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro
     restart: unless-stopped
     logging: *logging
     depends_on:

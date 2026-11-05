@@ -1,31 +1,24 @@
-# nginx for the AWS stack (docker-compose.prod.yml). The nginx image substitutes
-# ${CAF_HOST} at start-up; nginx's own $variables are left alone.
-
-# NFR-27: HTTPS only.
-server {
-    listen 80;
-    server_name ${CAF_HOST};
-    return 301 https://$host$request_uri;
-}
+# nginx for the AWS stack (docker-compose.prod.yml), the origin behind CloudFront.
+# CloudFront serves HTTPS with its own certificate and redirects HTTP to HTTPS
+# (NFR-27); the EC2 security group admits port 80 only from CloudFront's
+# origin-facing addresses, so nothing reaches nginx except through CloudFront.
 
 server {
-    listen 443 ssl;
-    http2 on;
-    server_name ${CAF_HOST};
+    listen 80 default_server;
 
-    ssl_certificate /etc/letsencrypt/live/${CAF_HOST}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${CAF_HOST}/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
+    # CloudFront appends the viewer's address to X-Forwarded-For. Take the last
+    # entry (real_ip_recursive off), so a client cannot choose the address that
+    # the login rate limit counts (NFR-21).
+    set_real_ip_from 0.0.0.0/0;
+    real_ip_header X-Forwarded-For;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header X-Content-Type-Options nosniff always;
 
-    # The client and the API share this origin, so CORS allows only it.
+    # The client and the API share the CloudFront origin, so CORS allows only it.
     location /api/ {
         proxy_pass http://api:8000;
         proxy_set_header Host $host;
-        # Replace, never append: a client must not choose the address that the
-        # login rate limit counts (NFR-21).
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
     }
