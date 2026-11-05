@@ -103,6 +103,16 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E91 | Two CAFIITK-189 experiments went wrong. 4 workers with a pool of 20 each exceeded PostgreSQL's 100 connections (503 "too many clients"). Separately, a keep-alive race was wrongly blamed for requests that got no response | Experiment errors | Server logs, and the keep-alive change not removing the errors | Pool reduced to fit the connection budget. The keep-alive change was reverted, and the errors were traced to Docker Desktop's port proxy. One `ReadError` in about 4,000 requests inside the network is still unexplained |
 | E92 | The harness's NFR-10 seed, and the first run with `--fresh`, each broke a schema CHECK: at most 500 portions per item, and a service day's default capacity of 1–100 | Implementation defect | Both runs stopped with the CHECK violation | Orders spread over several items; the design capacity used for the day (#89) |
 | E93 | The first performance report gave "4,840 requests" without adding them up; the total was 5,941 | Arithmetic error | The AI checked the sum before committing | Corrected before commit |
+| E94 | An order-history test assumed a modified order's version is 2 | Test defect | Failing test run | Assertion removed |
+| E95 | The security fuzz pass changed shared settings through the API (it sends valid values too), so a later file's subsidy test failed | Test isolation defect | Full-suite run | The campaign restores the settings table after each test |
+| E96 | The Android package was named `in.ac.iitk…`; `in` is a reserved word in Java, so the build failed | Implementation defect | Build failure | Renamed to `com.xforce.cafiitk` |
+| E97 | A Gradle build report was committed with the Android project | Tooling mistake | Reading the commit before review | Removed in a follow-up commit, and `build/` ignored |
+| E98 | Closing comments on Jira tasks cited test files that do not hold those tests (NFR-31, US-15, FR-47) | Hallucinated reference | Checking the files after posting | Comments corrected |
+| E99 | The CI job was renamed on the belief that branch protection was off. A repository ruleset, which that API does not show, required the old name, so every merge was blocked | **Unverified assumption** | The merge was refused | Name restored, with a comment saying it is a required check |
+| E100 | The traceability script's pattern missed test names that continue after the AC number, reporting dozens of false gaps | Verification flaw | Results contradicted known-passing rows | Pattern fixed before any row was changed |
+| E101 | A PR description said the team member chose not to audit rate-limited logins; it was the AI's proposal | Misattribution | Re-reading the PR | Corrected; the author then confirmed the decision |
+| E102 | A local full-suite failure (a mockpay test) came from running a Flutter build at the same time | Verification flaw | It passed 3 of 3 alone, and in CI | Suites run one at a time afterwards |
+| E103 | The AI told the author that everything left was waiting on AWS; only 5 of 13 items were | Overclaim | The author questioned it | Corrected with a per-issue breakdown |
 
 ---
 
@@ -726,3 +736,137 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **Outcome:** accepted.
   - The NFR-8, NFR-9 and NFR-12 targets are still missed on the local stack (E82).
   - NFR-9 does not define think time; the report raises this for the team. Team decision pending.
+
+### Rate limits and passwords in errors (CAFIITK-182; NFR-20, NFR-21), and Bug CAFIITK-199
+
+- **Asked for:** limits on failed logins and order requests that hold across API workers (NFR-21), and checks that a password never leaves the server (NFR-20).
+- **AI produced:**
+  - Counters in the shared `rate_limits` table, taken with one atomic upsert that stops at the cap. A login reserves its place before the password is checked and gives it back on success, so only failures count.
+  - Limits per account and per address for logins, and per Student for create, modify and cancel.
+  - An hourly job that deletes old counters.
+  - While testing, the AI found that a 422 echoed the rejected password back to the client. It raised Bug CAFIITK-199 and fixed it: validation errors no longer include the input.
+- **How it was checked:**
+  - Tests against PostgreSQL. One sends 20 parallel guesses across two real API processes; exactly 5 are checked and 15 get 429.
+  - The full suite passed.
+  - Approved by a teammate (Rudransh) with no change requests.
+- **Outcome:** accepted.
+
+### One Student, a limited number of orders (CAFIITK-151, US-26)
+
+- **Asked for:** refuse a new order when the Student already has P-MAX_ACTIVE unfinished orders that day (FR-31).
+- **AI produced:** the check, made under the Student row lock that ordering already takes, so two parallel requests cannot both pass. It answers 422.
+- **How it was checked:** TC-US26-AC1 and AC2, and the full suite. Approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### My orders (CAFIITK-146, US-21)
+
+- **Asked for:** a Student's past orders, each showing every price snapshot and any refund (FR-27, FR-28).
+- **AI produced:**
+  - `GET /orders`, newest first, capped at 200.
+  - An order's detail now includes its snapshots and refunds.
+  - The client's "My orders" list and order history screens.
+- **How it was checked:**
+  - TC-US21-AC1 and AC2, plus ownership tests: another Student's order gives 404.
+  - Client widget tests.
+  - Approved by a teammate (Rudransh).
+- **What changed:**
+  - One test assumed a modified order's version is 2 (E94).
+  - A repository method was renamed so it did not clash with a teammate's.
+- **Outcome:** accepted with modifications.
+
+### Staff accounts (CAFIITK-128, US-03)
+
+- **Asked for:** the Administrator creates Kitchen Staff and Administrator accounts and deactivates or reactivates them (FR-2, FR-3).
+- **AI produced:**
+  - `/admin/users`. Deactivation takes effect at once for logins, refresh tokens and access tokens.
+  - An Administrator cannot change their own account (409).
+  - Every change is audited, without the password.
+  - The Staff tab in the Administrator dashboard.
+- **How it was checked:**
+  - TC-US03-AC1 to AC3 and the backend tests.
+  - Client widget tests. One first tapped the wrong widget and was corrected.
+  - Approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### Adversarial and security campaign (CAFIITK-185), and Bugs CAFIITK-200, 203 and 204
+
+- **Asked for:** attack the finished system and log every finding as a Bug. The author waited until every feature was merged before running the final pass.
+- **AI produced:**
+  - A permission matrix of all 46 routes, checked anonymously and for every role. It fails CI if a new route is not listed.
+  - Probes for:
+    - reading or changing another Student's order;
+    - forged and misused tokens;
+    - setting server-owned fields;
+    - price and quantity tampering;
+    - another Student's idempotency key.
+  - A fuzz pass that sends hostile bodies, fields, query parameters, path parameters and keys to every route, expecting no 5xx.
+- **Findings (all raised as Bugs and fixed):**
+  - **CAFIITK-200 (first pass):** a NUL character in request text gave a 500.
+  - **CAFIITK-203:** the same problem in six text query parameters.
+  - **CAFIITK-204:** an audit cursor beyond the bigint range gave a 500.
+  - No authorisation or tampering issue was found.
+- **How it was checked:**
+  - Each failure was reproduced and traced to its PostgreSQL error before it was raised.
+  - The full suite passed after the fixes.
+  - The fixes were approved by a teammate (Rudransh). The campaign PR was stacked on the fix PR and reached `develop` through it, so it had no separate approval.
+- **What changed:** the fuzz pass changed shared settings, which broke a later test file (E95).
+- **Outcome:** accepted.
+
+### Android build (CAFIITK-192; NFR-34)
+
+- **Asked for:** an Android app from the same Flutter code.
+- **AI produced:**
+  - The Android project, with the internet permission.
+  - A network rule that allows plain HTTP only to the developer's machine.
+  - README steps for the build.
+  - No Dart code changed.
+- **How it was checked:**
+  - The author installed the release APK on a physical phone, connected to the Compose stack. They registered, set up the day as Administrator, then ordered, tracked and cancelled as a Student. Each step was confirmed in the server logs and the database, including the refund.
+  - The first order attempts were refused because ordering had not opened yet, which is correct behaviour.
+  - Approved by a teammate (Rudransh).
+- **What changed:** an invalid package name (E96), and a build report committed by mistake (E97).
+- **Outcome:** accepted with modifications.
+
+### Closing requirement tasks with evidence, and Bug CAFIITK-205
+
+- **Asked for:** close every backlog requirement task the merged work satisfies, after checking each one.
+- **AI produced:**
+  - For each task, a check against the SRS text and the tests on `develop`, then a comment citing the PR and tests.
+  - Tasks still failing or blocked were left open, with the reason.
+  - Checking FR-47 turned up a gap: failed logins were never audited. The AI raised Bug CAFIITK-205 and fixed it.
+  - The AI proposed not auditing logins refused by the rate limit, because those are unbounded and the audit log is append-only. The author confirmed this decision.
+- **How it was checked:**
+  - Each closure cites specific tests. Two comments first named the wrong test file (E98).
+  - The CAFIITK-205 fix was approved by a teammate (Rudransh), and was seen working on the live stack.
+- **Team decision:** the author decided to close NFR-8, NFR-9 and NFR-12 even though they fail on the local stack. Each closing comment says "target not met" and lists the numbers and the remedies not done. The traceability matrix keeps them as Fail.
+- **Outcome:** accepted.
+
+### Discount and subsidy screens (FR-22, FR-23)
+
+- **Asked for:** the discount-rule and subsidy APIs were merged, but the Administrator had no screen for either. The author asked for one.
+- **AI produced:**
+  - A Discounts tab: list, add, edit, deactivate.
+  - A Subsidy tab: the amount and cap, and an eligibility switch per Student.
+  - The generated client sends unset fields as null, which the server refuses, so every edit sends the whole rule.
+- **How it was checked:**
+  - 13 widget tests.
+  - The author tried both tabs by hand on the stack, and each action was confirmed in the logs and the audit table.
+  - Approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### Jira key in every commit (CAFIITK-124; NFR-44)
+
+- **Asked for:** CI should also reject commits without a Jira key. Merge commits are excepted.
+- **AI produced:** a step that checks each of a PR's own commits. It was tested locally on real commit ranges, including a negative case.
+- **What changed:** the first version renamed the CI job, which blocked every merge (E99).
+- **How it was checked:** the PR's own CI run passed, and later PRs passed the check. Approved by a teammate (Rudransh).
+- **Outcome:** accepted with modifications.
+
+### Final regression and traceability matrix (CAFIITK-193)
+
+- **Asked for:** a regression pass on `develop`, and the traceability matrix completed for D3.
+- **AI produced:**
+  - The full backend and client suites run on `develop`.
+  - The matrix brought up to date: Jira statuses from Jira, PR numbers from merged PR titles, and a script that confirms every listed acceptance criterion has a test named for it.
+- **What changed:** the first version of that script reported dozens of tests as missing that existed (E100).
+- **Team evaluation:** pending; the PR is in review.
