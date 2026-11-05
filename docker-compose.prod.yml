@@ -1,0 +1,106 @@
+# AWS stack (CAFIITK-190): caf-api, caf-worker, mockpay and nginx on one EC2 instance,
+# PostgreSQL on RDS. The backend image and Alembic migrations are the ones
+# docker-compose.yml uses; only configuration differs (NFR-40).
+# Usage on the instance: see deploy/README.md.
+
+x-backend-env: &backend-env
+  CAF_ENV: production
+  CAF_DATABASE_URL: ${CAF_DATABASE_URL:?set CAF_DATABASE_URL in .env}
+  CAF_DB_POOL_SIZE: ${CAF_DB_POOL_SIZE:-5}
+  WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+  CAF_JWT_SECRET: ${CAF_JWT_SECRET:?set CAF_JWT_SECRET in .env}
+  CAF_MOCKPAY_URL: http://mockpay:8001
+  CAF_CORS_ORIGINS: '["https://${CAF_HOST:?set CAF_HOST in .env}"]'
+  CAF_LLM_API_KEY: ${CAF_LLM_API_KEY:-}
+  CAF_LLM_MODEL: ${CAF_LLM_MODEL:-gpt-4o-mini}
+  CAF_SEED_ADMIN_EMAIL: ${CAF_SEED_ADMIN_EMAIL:-}
+  CAF_SEED_ADMIN_PASSWORD: ${CAF_SEED_ADMIN_PASSWORD:-}
+  CAF_SEED_KITCHEN_EMAIL: ${CAF_SEED_KITCHEN_EMAIL:-}
+  CAF_SEED_KITCHEN_PASSWORD: ${CAF_SEED_KITCHEN_PASSWORD:-}
+
+# Keep container logs from filling the instance's disk.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  migrate:
+    build: ./backend
+    image: caf-backend
+    environment: *backend-env
+    command: ["sh", "-c", "alembic upgrade head && python -m app.seed"]
+    logging: *logging
+
+  api:
+    image: caf-backend
+    environment:
+      <<: *backend-env
+      # Only nginx reaches caf-api, and it overwrites X-Forwarded-For with the
+      # caller's address, so the rate limits see real client IPs (NFR-21).
+      FORWARDED_ALLOW_IPS: "*"
+    # Not public: reachable from the instance itself, e.g. over an SSH tunnel for /metrics.
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mockpay:
+        condition: service_healthy
+
+  worker:
+    image: caf-backend
+    environment: *backend-env
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      mockpay:
+        condition: service_healthy
+
+  # CAF_ENV=production removes the test controls; every authorisation is approved.
+  # No published port: only caf-api and caf-worker call it.
+  mockpay:
+    image: caf-backend
+    environment: *backend-env
+    command: ["uvicorn", "app.mockpay.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # TLS termination, the Flutter web build, and the API on the same origin (NFR-27).
+  nginx:
+    image: nginx:1.27-alpine
+    environment:
+      CAF_HOST: ${CAF_HOST}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./app/build/web:/usr/share/nginx/html:ro
+      - ${CAF_CERT_DIR:-/etc/letsencrypt}:/etc/letsencrypt:ro
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      api:
+        condition: service_healthy

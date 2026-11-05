@@ -29,6 +29,9 @@ curl localhost:8000/metrics   # Prometheus text format
 
 API docs: http://localhost:8000/docs
 
+The AWS deployment (EC2 + RDS, nginx with TLS) uses `docker-compose.prod.yml`;
+see [deploy/README.md](deploy/README.md).
+
 ## Backend development
 
 ```sh
