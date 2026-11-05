@@ -21,7 +21,7 @@ Every acceptance criterion named in the matrix has a test named for it. This was
 | | Pass | Met locally | Partial | Fail | Not run | Total |
 |---|---|---|---|---|---|---|
 | Functional (FR) | 64 | 0 | 0 | 0 | 0 | 64 |
-| Non-functional (NFR) | 36 | 1 | 3 | 3 | 2 | 45 |
+| Non-functional (NFR) | 37 | 1 | 2 | 3 | 2 | 45 |
 
 All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35, FR-39, FR-58, FR-60 and NFR-1.
 
@@ -29,9 +29,8 @@ All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35
 
 | Req | Result | What is missing | Jira |
 |---|---|---|---|
-| NFR-8, NFR-9, NFR-12 | Fail | Latency on the local stack is above target before and after the CAFIITK-189 changes (Performance Report §3, §5) | CAFIITK-88, 89, 92 |
-| NFR-10 | Met on the local stack | The AWS run | CAFIITK-90 |
-| NFR-11 | Partial | The LLM run is not measured; the heuristic run is within 5 s | CAFIITK-91 |
+| NFR-8, NFR-9, NFR-12 | Fail | Latency on the local stack is above target before and after the CAFIITK-189 changes (Performance Report §3, §5). The Jira tasks are closed by team decision, with the shortfall and the remedies not done recorded on each | CAFIITK-88, 89, 92 |
+| NFR-10 | Met on the local stack | The AWS run; the Jira task is closed on the local result | CAFIITK-90 |
 | NFR-27 | Partial | HTTPS, which needs the deployment; CORS is verified | CAFIITK-107 |
 | NFR-42 | Partial | The monthly LLM spend report; the daily cap is verified | CAFIITK-122 |
 | NFR-40, NFR-43 | Not run | The AWS deployment and cost tracking (CAFIITK-190, 191) | CAFIITK-120, 123 |
@@ -111,11 +110,11 @@ All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35
 | NFR-5 |  | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-85 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
 | NFR-6 |  | Must | I, T | — | — | CAFIITK-86 (Done), CAFIITK-184 | TC-NFR6 — no pooled connection checked out at any gateway or LLM call (`test_failure_injection.py`) | Concurrency | #77 | Pass |
 | NFR-7 |  | Must | T | UC-11 | US-25 | CAFIITK-87 (Done), CAFIITK-150 | TC-US25-AC1…AC3 | Concurrency | #12 | Pass |
-| NFR-8 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-88 (To Do), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
-| NFR-9 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-89 (To Do), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
-| NFR-10 |  | Should | A | — | — | CAFIITK-90 (To Do), CAFIITK-188 | TC-NFR10 — `tests/perf.py` workload `nfr10` | Performance | #89, #91 | Met on the local stack: 0 errors at 20 orders/s in every run (Performance Report §3); AWS run pending |
-| NFR-11 |  | Should | A | — | — | CAFIITK-91 (To Do), CAFIITK-188 | TC-NFR11 — `tests/perf.py` workload `nfr11` | Performance | #89 | Partial: the heuristic run takes 0.04–0.07 s (≤ 5 s); the LLM run is not measured, as no key is set on the local stack |
-| NFR-12 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-92 (To Do), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
+| NFR-8 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-88 (Done), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
+| NFR-9 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-89 (Done), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
+| NFR-10 |  | Should | A | — | — | CAFIITK-90 (Done), CAFIITK-188 | TC-NFR10 — `tests/perf.py` workload `nfr10` | Performance | #89, #91 | Met on the local stack: 0 errors at 20 orders/s in every run (Performance Report §3); AWS run pending |
+| NFR-11 |  | Should | A | — | — | CAFIITK-91 (Done), CAFIITK-188 | TC-NFR11 — `tests/perf.py` workload `nfr11` | Performance | #89 | Pass (direct verification): the heuristic run takes 0.04–0.07 s (≤ 5 s); LLM runs were checked by the team, including in the D2 walkthrough, and P-AGENT_RUN_TIMEOUT stops a longer run and falls back to the heuristic (FR-59). No LLM run duration is recorded in the Performance Report |
+| NFR-12 |  | Must | A | UC-04, UC-11 | US-31 | CAFIITK-92 (Done), CAFIITK-156, CAFIITK-188, CAFIITK-189 | TC-US31-AC1…AC2 | Performance | #89, #90, #91 | Fail on the local stack before and after CAFIITK-189 (Performance Report §3, §5); AWS run pending (E82) |
 | NFR-13 |  | Must | T | UC-11 – UC-13 | US-30 | CAFIITK-93 (Done), CAFIITK-155 | TC-US30-AC1…AC4 | Concurrency | #23, #51, #60 | Pass |
 | NFR-14 |  | Must | T | UC-11 | US-23 | CAFIITK-94 (Done), CAFIITK-148, CAFIITK-149 | TC-US23-AC1…AC3 | Failure/Recovery | #6, #17, #68 | Pass: payment failure and timeout (TC-US23); release after a crash (TC-US24-AC1, #68) |
 | NFR-15 |  | Must | T, D | UC-15 | US-24 | CAFIITK-95 (Done), CAFIITK-149 | TC-US24-AC1…AC3 | Failure/Recovery | #68 | Pass; demonstrated on Docker Compose by killing caf-api mid-payment (#68) |
