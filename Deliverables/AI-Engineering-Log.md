@@ -90,8 +90,8 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E78 | The CAFIITK-162 utilisation bars passed text as the progress bar's accessibility value, which Flutter rejects | Implementation defect | Widget tests, before the PR | The figure moved into the bar's label |
 | E79 | A draft of the US-31 results gave the request total as "7,000" without adding it up; the total was 7,811 | Arithmetic error | The AI checked the sum before committing | Corrected before commit |
 | E80 | The PR #90 description mentioned a GitHub handle guessed from a teammate's name, which could have notified an unrelated account | Risk | The AI noticed after opening the PR | Mention removed |
-| E81 | The `caf_app` role (CAFIITK-163) relies on the login user being allowed to switch to it. On a managed database (RDS) this needs an explicit grant, which the migration makes, but it has been checked only on the local stack | **Deployment risk** | Design of the role switch | Pending: to be confirmed on AWS (CAFIITK-190); flagged in #86 |
-| E82 | US-31's latency targets are not met on the local stack, before or after CAFIITK-189. One read got no response under peak load | **Quality risk** | The US-31 acceptance tests (CAFIITK-156) | Pending: to be measured again on AWS (CAFIITK-190), with the load generator off the instance |
+| E81 | The `caf_app` role (CAFIITK-163) relies on the login user being allowed to switch to it. On a managed database (RDS) this needs an explicit grant, which the migration makes, but it has been checked only on the local stack | **Deployment risk** | Design of the role switch | Confirmed on AWS (CAFIITK-190, #106): the RDS login user is a member of `caf_app`, which has no UPDATE or DELETE on `audit_log`, and writes succeed. The same check found the grant missing for `caf_agent` (E104) |
+| E82 | US-31's latency targets are not met on the local stack, before or after CAFIITK-189. One read got no response under peak load | **Quality risk** | The US-31 acceptance tests (CAFIITK-156) | Pending. The stack is on AWS (CAFIITK-190), but the US-31 harness needs mockpay's test controls, which production turns off; the team has not yet decided how to run it there |
 | E83 | Nothing delivered queued payment voids or unacknowledged refunds. VOID rows and PENDING refunds were written "for the worker", but no job sent them, and nothing in the app called `gateway.void` | **Implementation gap** | Designing the hold sweeper (CAFIITK-149), whose late-approval path relies on a void | A `payment-outbox` job sends them with no transaction open and marks each row done once acknowledged (#68) |
 | E84 | When deciding how to split a cancel's refund, the system counted an authorisation that had been voided as a charge. A cancel after a superseded modification could therefore refund against a voided authorisation, which mockpay refuses | **Design defect** | Designing the sweeper's void path | Voided authorisations are left out of the refund split; test against real mockpay (#68) |
 | E85 | The AI assumed E30 was only an out-of-date line in this log and planned no fix. Tests were still signing tokens with the 17-byte default key | Unverified assumption | The warning was still in the CAFIITK-149 test run | Reported to the author; fixed separately as Bug CAFIITK-201 (E30) |
@@ -113,6 +113,11 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E101 | A PR description said the team member chose not to audit rate-limited logins; it was the AI's proposal | Misattribution | Re-reading the PR | Corrected; the author then confirmed the decision |
 | E102 | A local full-suite failure (a mockpay test) came from running a Flutter build at the same time | Verification flaw | It passed 3 of 3 alone, and in CI | Suites run one at a time afterwards |
 | E103 | The AI told the author that everything left was waiting on AWS; only 5 of 13 items were | Overclaim | The author questioned it | Corrected with a per-issue breakdown |
+| E104 | Migration 0002 never granted `caf_agent` to the login user. On RDS that user is not a superuser, and since PostgreSQL 16 creating a role does not let its creator switch to it, so every agent run would have failed on AWS with "permission denied to set role" | **Deployment defect** | Before deploying, the AI ran the migrations on a local PostgreSQL 16 as a non-superuser login, as on RDS | Migration 0007 grants it; a test migrates a fresh server as such a user and fails without 0007. An agent run then succeeded on RDS (#106) |
+| E105 | The first deployment plan relied on a free hostname service (sslip.io) and a Let's Encrypt certificate. The campus network resolves every such service (sslip.io, nip.io, traefik.me, DuckDNS) to a block page, so the site would have been unreachable on campus, including at the demo | **Design risk** | DNS lookups from the campus network before requesting the certificate | HTTPS moved to CloudFront, whose `*.cloudfront.net` name has a valid certificate and resolves on campus; EC2 port 80 admits only CloudFront (#106) |
+| E106 | The AI's first monthly cost estimate for the AWS stack (USD 20–25) was too low for a `t3.small`; about USD 30–35 is right | Arithmetic error | The AI rechecked the figure in its next reply | Corrected before any decision depended on it; either figure is well within the credits |
+| E107 | A draft of the cost report said CloudFront was on its Free pricing plan, before any evidence. The console later could not show the plan at all, for lack of a permission | Unverified claim | The AI's own review of which facts it had checked | Marked as unconfirmed before commit; the report now says the plan could not be read and that the Free account plan cannot be billed whatever it is (#108) |
+| E108 | The AI sent the merge of #108, a server update and closing CAFIITK-191 together. The safety check refused the server update, which also stopped the merge, so Jira showed Done before the PR was merged. This repeats E76 | Process lapse | The refusal message | The merge was run on its own straight away; the server was updated by the author |
 
 ---
 
@@ -870,3 +875,53 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
   - The matrix brought up to date: Jira statuses from Jira, PR numbers from merged PR titles, and a script that confirms every listed acceptance criterion has a test named for it.
 - **What changed:** the first version of that script reported dozens of tests as missing that existed (E100).
 - **Team evaluation:** accepted; the PR was approved by a teammate (Rudransh) with no change requests, then merged.
+
+### Deploy to AWS (CAFIITK-190; NFR-27, NFR-40)
+
+- **Asked for:** the issue's owner was busy and asked the author to take it over. The author asked the AI to find the issue in Jira, check whether the AWS free tier would cover two weeks of use, and then carry out the deployment. The issue was reassigned to the author.
+- **AI produced:**
+  - An explanation of AWS's two account plans. On the Free plan the account cannot be charged and closes when its credits run out, so the team chose it.
+  - Step-by-step console instructions: account security, a USD 1 budget, security groups, RDS (PostgreSQL 16, the version the project is tested on), EC2 and CloudFront.
+  - `docker-compose.prod.yml`, using the same image and migrations as the local stack, with the database on RDS:
+    - caf-api is bound to the instance's loopback address, and mockpay is not published.
+    - mockpay's test controls are off.
+    - `/metrics` is not served publicly.
+  - The nginx origin config. It takes the client's address from the entry CloudFront appends to X-Forwarded-For, so the login rate limit counts real client IPs and a client cannot choose its own.
+  - A production `.env` template and the runbook `deploy/README.md`.
+  - Migration 0007, the fix for E104, with its test.
+  - The AI installed Docker on the instance, built and started the stack, built the web client for the CloudFront address, and ran the checks.
+- **How it was checked:**
+  - The full backend suite: 1,353 passed.
+  - Before deploying, a local run of the production stack against a database with RDS's non-superuser login. Migrations ran, login worked, and an agent run succeeded.
+  - On AWS, from the campus network: HTTP redirects to HTTPS with a valid certificate, and `/ready` answers. `/metrics` returns 404. CORS refuses a foreign origin. Ports 8000 and 8001 are closed. Register, login and authorised requests work through CloudFront. A spoofed X-Forwarded-For was ignored: the audit log recorded the real campus address.
+  - E81's checks run against RDS: a non-superuser login that holds both roles, and an append-only audit log.
+  - The author restricted EC2 port 80 to CloudFront's address list, and the AI confirmed that the instance no longer answers directly. The author added an item and started an agent run as the Administrator in the browser.
+  - Approved by a teammate (Rudransh), with all CI checks passing (#106).
+- **What changed:**
+  - HTTPS moved from Let's Encrypt to CloudFront (E105).
+  - The servers ended up in Sydney rather than the planned Mumbai, which adds network latency from India.
+  - The AI declined a proposal to commit under another member's GitHub account, using a password shared in the chat. The issue was reassigned to the author instead.
+  - A JWT secret that had been pasted into the chat was replaced on the server, unseen, before the first start.
+  - A smoke-test Student account was left on the deployed database and disclosed in the PR.
+  - Database connections use `sslmode=require`, which encrypts but does not verify the server certificate. The connection never leaves AWS's private network.
+- **Outcome:** accepted. The site is live on AWS. The US-31 re-run on AWS is still pending (E82).
+
+### Cost tracking (CAFIITK-191; NFR-42, NFR-43)
+
+- **Asked for:** a USD 1 billing alarm, confirmation that every resource is within the free tier, and LLM requests and monthly spend reported against the USD 5 cap.
+- **AI produced:**
+  - `python -m app.modules.agent.spend`, which reports for each IST day:
+    - billed, cached and failed LLM requests;
+    - tokens, and cost at list prices;
+    - the busiest day against P-AGENT_DAILY_CAP, and the month against USD 5.
+
+    Only billed requests are priced. An unknown model fails the report instead of counting as free.
+  - `Deliverables/Cost-Report.md`, built from the author's console screenshots, the instance metadata, the database and a run of the report on the deployed stack. It covers the account plan, the credits, each resource's free-tier eligibility, the budget, the LLM spend, and a worst-case bound under the daily cap.
+- **How it was checked:**
+  - 10 tests against PostgreSQL, including the IST day boundary and the two over-limit cases.
+  - The report run against RDS: USD 0 in November, within NFR-42. The author ran it again on the server after merging.
+  - Approved by a teammate (Kshitij), with all CI checks passing (#108).
+- **What changed:**
+  - Facts the AI could not verify were marked as unconfirmed until the screenshots arrived (E107).
+  - The budget's alert email shows as unverified, and the team decided to leave it that way, because the Free account plan cannot be billed. The report records this. The author asked for the alarm requirement to be removed; the AI kept it and recorded the decision instead, since the configured budget meets NFR-43.
+- **Outcome:** accepted.
