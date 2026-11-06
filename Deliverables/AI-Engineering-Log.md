@@ -1077,4 +1077,4 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
   - An update to the performance report: the AWS load run, which was still described as pending, is now stated as not done.
 - **Team decision:** the author chose one file per brief item, and chose to state that the AWS load run was not done rather than wait for one.
 - **What changed:** checking each claim against its source before commit corrected several drafted figures (E121). One merged PR turned out to have no approval of its own: it had been stacked on another PR's branch. The project report says so instead of claiming every PR was reviewed.
-- **Team evaluation:** pending; the PR is in review.
+- **Team evaluation:** accepted; the PR was approved by a teammate (Rudransh) with no change requests, then merged.
