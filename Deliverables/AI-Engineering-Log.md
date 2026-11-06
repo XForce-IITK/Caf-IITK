@@ -118,6 +118,17 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E106 | The AI's first monthly cost estimate for the AWS stack (USD 20–25) was too low for a `t3.small`; about USD 30–35 is right | Arithmetic error | The AI rechecked the figure in its next reply | Corrected before any decision depended on it; either figure is well within the credits |
 | E107 | A draft of the cost report said CloudFront was on its Free pricing plan, before any evidence. The console later could not show the plan at all, for lack of a permission | Unverified claim | The AI's own review of which facts it had checked | Marked as unconfirmed before commit; the report now says the plan could not be read and that the Free account plan cannot be billed whatever it is (#108) |
 | E108 | The AI sent the merge of #108, a server update and closing CAFIITK-191 together. The safety check refused the server update, which also stopped the merge, so Jira showed Done before the PR was merged. This repeats E76 | Process lapse | The refusal message | The merge was run on its own straight away; the server was updated by the author |
+| E109 | The first redaction filter (CAFIITK-180) had three defects. A log call whose arguments did not fit its template raised an error into the request and became a 500. A record passing through two handlers gained a stray `]`. The URL pattern took a port for a password and missed `redis://:password@host` | Implementation defect | The AI's audit of the PR, after it had been approved | Each fixed with a regression test; the changes since the approval were listed in a PR comment (#84) |
+| E110 | The fake secrets that the redaction tests log on purpose failed the secret scan, which reads the full history, so a new commit could not remove them | Tooling defect | CI | `.gitleaks.toml` keeps the default rules and allows only those values, only in that test file (#84) |
+| E111 | A 3,909-line file named `backend/--help` was committed with CAFIITK-181 | Tooling mistake | Before merge; how it was noticed is not recorded | Removed in a follow-up commit (#82) |
+| E112 | Two full-suite runs each had a single failure that did not recur. In CAFIITK-181 the failing test was not identified. In CAFIITK-180 it was a hold-sweeper test, which passed 3 of 3 alone | Verification gap | Full-suite runs | Pending: reported in #82 and #84 and flagged to the test's author; no cause or decision is recorded |
+| E113 | The first CAFIITK-183 cache of each route's query parameters used weak references, but routes are not hashable, so it failed | Implementation defect | First test run | Keyed by `id(route)`, keeping the route so that a reused id cannot return another route's parameters |
+| E114 | A CAFIITK-142 test expected a 422 for an empty `item_ids` on a CATEGORY rule, which is valid. The first PR description also said 41 tests; there were 35 | Test defect; arithmetic error | Failing test run; re-reading the PR | Test and description corrected; the code was right |
+| E115 | The SRS gives the subsidy parameters' defaults but no limits. The AI chose 0–₹500 and 0–100 % | Specification gap | Writing CAFIITK-143 | Pending: #93 asked reviewers to check them; it was approved with no comment on them, and no explicit decision is recorded |
+| E116 | The first CAFIITK-143 test helper assumed the audit table is emptied between tests; it keeps earlier tests' rows | Test defect | The AI reading the test set-up before the first run | Lookups filtered by actor |
+| E117 | The CAFIITK-187 reference implementation and its worked cases come from the same AI reading of FR-24 as the tests' expectations, so a shared misreading would pass. The breakage check stopped at the first failing test, so it does not show that each property catches a bug on its own | **Quality risk** | The AI's review of what the check proves | Pending: see E119 for the reference's review |
+| E118 | Wrong references in CAFIITK-143 and CAFIITK-187. #93 cited SADD §7 for the routes (they are in §2.6). A comment in `pricing/schemas.py` and the docstring of `test_pricing_properties.py` cite FR-6 for the price range (it is FR-8). That docstring also says at most 20 items per cart; the tests draw at most 12 | Hallucinated reference | Checking the SRS and SADD while writing these entries | Pending: not corrected |
+| E119 | The AI wrote "I reviewed…" in the author's voice in #93 (the diff, the limits, the locking) and #94 (the reference against FR-24) without being told any such review took place. This repeats E101 | Misattribution | Re-reading the PRs while writing these entries | Pending: the author to confirm or correct both descriptions |
 
 ---
 
@@ -925,3 +936,99 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
   - Facts the AI could not verify were marked as unconfirmed until the screenshots arrived (E107).
   - The budget's alert email shows as unverified, and the team decided to leave it that way, because the Free account plan cannot be billed. The report records this. The author asked for the alarm requirement to be removed; the AI kept it and recorded the decision instead, since the configured budget meets NFR-43.
 - **Outcome:** accepted.
+
+### Structured logs, correlation IDs and redaction (CAFIITK-180; NFR-28 – NFR-30)
+
+- **Asked for:** JSON logs, a correlation ID on every request, and secrets kept out of the logs.
+- **AI produced:**
+  - Middleware that takes a safe `X-Request-ID` from the client or generates one, and returns it on every response.
+  - That ID carried into logs, audit rows, calls to mockpay, agent runs (migration 0004) and each worker job.
+  - One JSON object per log line, and one access line per request with route, status and latency.
+  - A redacting filter over messages, extra fields and tracebacks: passwords, tokens, API keys, database URL passwords and card numbers.
+- **How it was checked:**
+  - 36 tests, then the full suite: 876 passed.
+  - By hand on Docker Compose: a failed login with a known password and an agent run with a known access token, neither appearing in any container's logs. The agent run's log lines carried the ID of the request that queued it.
+  - Approved by a teammate (Shashi), with all CI checks passing (#84).
+- **What changed:**
+  - Three redaction defects, found after the approval (E109).
+  - A secret-scan allowance for the tests' fake values (E110).
+- **Outcome:** accepted with modifications. Gunicorn's and uvicorn's own server messages stay plain text. One unexplained test failure was reported (E112).
+
+### Health, readiness and metrics (CAFIITK-181; NFR-31)
+
+- **Asked for:** `/health`, `/ready` and `/metrics`, used as Docker health checks. The load measurement and the deployment both waited on this.
+- **AI produced:**
+  - `/ready`, which checks the database and returns 503 with `Retry-After` when it cannot reach it.
+  - Prometheus metrics: latency by route template, order outcomes, row-lock waits, agent runs, and database status. Unmatched URLs share one label, so probing cannot create new series.
+  - Metrics that report one total across gunicorn's workers.
+  - A note for the deployment that `/metrics` has no authentication, so it must not be public.
+- **How it was checked:**
+  - 9 tests, then the full suite: 818 passed.
+  - By hand on Docker Compose: with the database stopped, `/ready` returned 503 and the API turned unhealthy; it recovered without a restart when the database came back.
+  - Approved by a teammate (Shashi) (#82).
+- **What changed:** a stray file was removed before merge (E111).
+- **Outcome:** accepted. One unidentified test failure was reported (E112).
+
+### Strict request validation and safe errors (CAFIITK-183; NFR-22, NFR-23)
+
+- **Asked for:** reject unknown input with a field-level 422, and never show internals in an error response.
+- **AI produced:**
+  - `extra="forbid"` on the three request bodies that lacked it, and a test that fails if any future body model allows extra fields.
+  - Unknown query parameters rejected across the app. `?limt=5` used to fall back silently to the default limit.
+  - Unhandled errors answered with a generic JSON 500 and the correlation ID; the traceback goes only to the redacted log.
+- **Design choices beyond the requirements:** the 500 is answered in the middleware and not re-raised, because the server would otherwise print the traceback again without redaction.
+- **How it was checked:**
+  - 18 tests, one using a real failing SQL query. Full suite: 916 passed.
+  - By hand on Docker Compose: both 422s, and a 503 with the correlation ID while the database was stopped.
+  - Approved by a teammate (Shashi) (#88).
+- **What changed:**
+  - The route cache (E113).
+  - Two hold-sweeper test helpers now assert the 500, because a crash no longer escapes the app.
+- **Outcome:** accepted.
+
+### Configure time-of-day discounts (CAFIITK-142, US-17)
+
+- **Asked for:** Administrator endpoints to create, edit and deactivate discount rules. The engine already applied them.
+- **AI produced:**
+  - `GET`, `POST` and `PATCH /admin/discount-rules`, with problems across fields reported together as field-level 422s.
+  - A rule name (migration 0006), since the acceptance criterion names its rules.
+  - Audit entries with only the changed fields; an edit that changes nothing writes nothing.
+  - The regenerated client. The screens came later, in a separate piece of work.
+- **How it was checked:**
+  - 35 tests, including TC-US17-AC1 and AC2. Full suite: 978 passed.
+  - By hand on Docker Compose: the migration on an existing database, a 60 % rule refused, the AC1 quote, deactivation and the audit rows.
+  - Approved by a teammate (Suryansh) (#92).
+- **What changed:** a wrong test expectation and a wrong test count (E114).
+- **Outcome:** accepted. For E28, the PR proposed keeping the end time excluded and asked reviewers to confirm or object. It was approved with no comment on this, so an explicit team decision is still pending.
+
+### Subsidy for eligible students (CAFIITK-143, US-18)
+
+- **Asked for:** Administrator control of the subsidy settings and of which Students are eligible. The engine already applied the subsidy.
+- **AI produced:**
+  - `GET` and `PUT /admin/subsidy`, and `PUT /admin/users/{id}/eligibility`.
+  - `GET /admin/students`, which was not requested, so that the Administrator can find a Student without knowing their ID.
+  - Audit entries with only the changed fields.
+  - The regenerated client. The screens came later, in a separate piece of work.
+- **Design choices beyond the requirements:**
+  - The limits on both settings (E115).
+  - Eligibility takes the same lock on the Student's row as order placement, so an order in progress is priced with one value.
+  - A deactivated Student can still be marked; a staff account gets a 404.
+- **How it was checked:**
+  - 43 tests, including TC-US18-AC1. Full suite: 1,021 passed.
+  - By hand on Docker Compose: the AC1 quote going from no subsidy to ₹20 off, a changed amount and cap, the refused requests, and the audit rows.
+  - Approved by a teammate (Suryansh) (#93).
+- **What changed:** a test helper (E116).
+- **Outcome:** accepted. The limits are still to be confirmed (E115), and two errors in what the PR said are uncorrected (E118, E119).
+
+### Pricing engine property tests (CAFIITK-187; FR-24, NFR-38)
+
+- **Asked for:** table-driven and property-based tests of the pricing engine that need no database.
+- **AI produced:**
+  - 10 properties at 300 random examples each, and 16 worked cases.
+  - A second implementation of FR-24 using decimal arithmetic, which every generated price must match.
+  - Properties for determinism, order independence, no stacking of discounts, the subsidy limits, rounding, and the zero floor. Others check that an extra discount or eligibility never raises the price.
+- **How it was checked:**
+  - Eight deliberate breakages of the engine, each caught and then undone: seven by the second implementation, one by the zero-floor property.
+  - Full suite: 1,047 passed. No hand check, because nothing at runtime changed.
+  - Approved by a teammate (Rudransh) (#94).
+- **Outcome:** accepted. The engine needed no change, and the tests found no defect in it. The limits of this evidence are in E117.
