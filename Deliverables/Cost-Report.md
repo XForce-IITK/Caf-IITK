@@ -5,30 +5,44 @@ CAFIITK-191. This report checks two requirements:
 - **NFR-43:** cloud resources stay within the AWS free tier, with a billing alarm at USD 1.
 - **NFR-42:** LLM usage stays within P-AGENT_DAILY_CAP requests a day and USD 5 a month.
 
-The deployment it describes is CAFIITK-190; see `deploy/README.md`.
+The deployment it describes is CAFIITK-190; see `deploy/README.md`. Figures are as of 6 November 2026, the day after deployment.
 
 ## 1. AWS account and plan
 
-The account was created in November 2026 on the AWS **Free plan**. Under this plan, usage is paid only from the sign-up credit (USD 100). The account cannot incur charges: when the credit or the six-month period runs out, the account closes instead of billing the card. Upgrading to the Paid plan is a deliberate console action, and nobody has taken it.
+The account was created on 5 November 2026 on the AWS **Free plan**. Under this plan, usage is paid only from credits. The account cannot incur charges: when the credits or the six-month period run out, the account closes instead of billing the card. Upgrading to the Paid plan is a deliberate console action, and nobody has taken it.
 
-The Billing page showed the following when the account was created:
+**Billing page:**
 
-- Current plan: **Free**
-- Amount due: **USD 0.00**
-- Credits remaining: **USD 100.00**
-- Days remaining: **182**, until 5 May 2027
+- Current plan: Free
+- Amount due: USD 0.00
+- Days remaining: 182, until 5 May 2027
+- Credits remaining: **USD 140.00**
+
+**Credits:**
+
+| Credit | Issued | Used | Expires |
+|---|---|---|---|
+| AWS Free Tier | USD 100.00 | USD 0.00 | 5 Nov 2027 |
+| Explore AWS: set up a cost budget using AWS Budgets | USD 20.00 | USD 0.00 | 5 Nov 2027 |
+| Explore AWS: create an Aurora or RDS database | USD 20.00 | USD 0.00 | 5 Nov 2027 |
+
+AWS updates the estimated amounts about every 24 hours, so the first day's usage had not appeared yet.
 
 ## 2. Resources and free-tier eligibility
 
-Region `ap-southeast-2` (Sydney). Instance type, availability zone and disk size were read from the EC2 instance; PostgreSQL version, database size and private-only access from RDS itself. Items marked † are from the console setup and are confirmed by the screenshots in §3–§4.
+Region `ap-southeast-2` (Sydney). Sources:
+
+- EC2: the instance metadata.
+- RDS: its Configuration page and the database itself.
+- CloudFront: its distribution page.
 
 | Resource | Configuration | Free tier |
 |---|---|---|
-| EC2 `caf-server` | `t3.small`, 8 GB gp3, Ubuntu 24.04 | `t3.small` is marked free-tier eligible for accounts created on or after 15 Jul 2025; gp3 is an eligible volume type |
-| RDS `caf-db` | PostgreSQL 16.15, `db.t4g.micro`†, Single-AZ†, not public; database 9 MB | Free tier template; no Multi-AZ, Provisioned IOPS or Extended Support |
-| Elastic IP | One, attached to `caf-server` | Public IPv4 is charged hourly and drawn from the credit |
-| CloudFront | One distribution, caching disabled | Free pricing plan† |
-| Data transfer | Demo traffic only | Within the free allowance |
+| EC2 `caf-server` | `t3.small` in `ap-southeast-2b`, 8 GB gp3, Ubuntu 24.04 | `t3.small` is marked free-tier eligible for accounts created on or after 15 Jul 2025; gp3 is an eligible volume type |
+| RDS `caf-db` | PostgreSQL 16.15, `db.t4g.micro` in `ap-southeast-2c`, Multi-AZ no, 20 GiB gp3 (autoscaling off), encrypted, not public; RDS Extended Support disabled; Enhanced Monitoring disabled; database 9 MB | Created from the Free tier template; none of the billable options (Multi-AZ, Provisioned IOPS storage, Extended Support) |
+| Elastic IP | One, attached to `caf-server` | Public IPv4 is charged hourly and paid from the credits |
+| CloudFront `caf-iitk-production` | One distribution, caching disabled | Well within CloudFront's always-free monthly allowance; any usage is paid from the credits |
+| Data transfer | Demo traffic; EC2 to RDS crosses availability zones (2b to 2c) | A few MB a day, paid from the credits |
 
 **Nothing outside the free plan is used.** The following are all absent:
 
@@ -39,17 +53,28 @@ Region `ap-southeast-2` (Sydney). Instance type, availability zone and disk size
 - Reserved Instances
 - Marketplace products
 
+**CloudFront pricing plan.** The console reports "Missing permissions" for the distribution's pricing plan, because the console role lacks `PricingPlanManagerReadonlyAccess`. Whatever the plan, the Free account plan cannot be billed.
+
 ## 3. Billing alarm (USD 1)
 
-An AWS Budgets cost budget of USD 1 a month, with an email alert.
+AWS Budgets → `CAFIITK-Monthly-Budget`:
 
-> **Pending evidence:** a screenshot of the budget (Billing → Budgets) showing the USD 1 amount and the alert recipient.
+| Field | Value |
+|---|---|
+| Budget type | Cost budget |
+| Amount and period | USD 1.00, monthly, from 1 Nov 2026 |
+| Alert | Actual cost > 100 % (USD 1), by email to a team member |
+| Health | Healthy: USD 0.00 of USD 1.00 spent |
+
+AWS requires a recipient added after 30 September 2026 to verify their address before alerts are delivered.
+
+> **Pending:** the recipient's verification. The address showed as "Pending" on 6 November 2026.
 
 ## 4. Credit consumption
 
-> **Pending evidence:** month-to-date usage and credits remaining from the Billing page, recorded after the stack has run for at least a day.
+On 6 November 2026, the day after deployment, total credits used were USD 0.00 of USD 140.00. AWS had not yet posted the first day's usage, and month-to-date cost showed no data.
 
-The deployment is due to be torn down after the demo (8–13 Nov 2026), as listed in `deploy/README.md`.
+The stack runs only for the demo period (8–13 Nov 2026) and is then torn down, as listed in `deploy/README.md`.
 
 ## 5. LLM usage and spend (NFR-42)
 
@@ -103,7 +128,7 @@ If a key is added, run the report after the first LLM runs and check the actual 
 
 | Requirement | Status |
 |---|---|
-| NFR-43 free tier | Met by construction (Free plan, eligible resources); credit consumption pending (§4) |
-| NFR-43 USD 1 alarm | Pending evidence (§3) |
+| NFR-43 free tier | Met: Free account plan (cannot be billed), free-tier resources, USD 0.00 of USD 140.00 credits used |
+| NFR-43 USD 1 alarm | Configured; alert delivery pending the recipient's email verification (§3) |
 | NFR-42 daily cap | Enforced and tested (`test_llm_client.py`) |
 | NFR-42 monthly spend | Reported: USD 0 in November 2026; worst case bounded as in §5 |
