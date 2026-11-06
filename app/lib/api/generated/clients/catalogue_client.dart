@@ -8,6 +8,7 @@ import 'package:retrofit/retrofit.dart';
 import '../models/flag_request.dart';
 import '../models/item_create.dart';
 import '../models/item_out.dart';
+import '../models/item_update.dart';
 import '../models/menu_out.dart';
 
 part 'catalogue_client.g.dart';
@@ -21,6 +22,25 @@ abstract class CatalogueClient {
   /// FR-8 / US-06: add a dish; it is ACTIVE immediately.
   @POST('/api/v1/admin/items')
   Future<ItemOut> onboardItem({@Body() required ItemCreate body});
+
+  /// Remove Item.
+  ///
+  /// FR-10 / US-08: withdraw a dish; it is set to REMOVED, never deleted.
+  ///
+  /// It leaves the menu and new orders for it get 409; orders already placed proceed.
+  @DELETE('/api/v1/admin/items/{item_id}')
+  Future<ItemOut> removeItem({@Path('item_id') required String itemId});
+
+  /// Edit Item.
+  ///
+  /// FR-9 / US-07: change an item's description, category or price.
+  ///
+  /// Orders already placed keep their price snapshots; only later quotes use the new price.
+  @PATCH('/api/v1/admin/items/{item_id}')
+  Future<ItemOut> editItem({
+    @Path('item_id') required String itemId,
+    @Body() required ItemUpdate body,
+  });
 
   /// Clear Item Flag.
   ///

@@ -1,5 +1,5 @@
-"""US-11 (CAFIITK-136, FR-14) acceptance test TC-US11-AC1, plus the FR-15 guard (US-12 AC1/AC2),
-via PUT /api/v1/admin/inventory/{date}/{item}."""
+"""US-11 (CAFIITK-136, FR-14) acceptance test TC-US11-AC1, and US-12 (CAFIITK-137, FR-15)
+acceptance tests TC-US12-AC1..AC2, via PUT /api/v1/admin/inventory/{date}/{item}."""
 
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -125,7 +125,7 @@ def test_setting_again_replaces_the_total(
         assert len(session.scalars(select(DailyInventory)).all()) == 1
 
 
-def test_us12_ac1_reducing_below_allocated_gets_409_and_changes_nothing(
+def test_tc_us12_ac1_reducing_below_allocated_gets_409_and_changes_nothing(
     db_client: TestClient, engine: Engine, admin: dict[str, str], thali: uuid.UUID
 ) -> None:
     _put(db_client, thali, 50, admin)
@@ -139,7 +139,7 @@ def test_us12_ac1_reducing_below_allocated_gets_409_and_changes_nothing(
     assert row is not None and (row.total, row.allocated) == (50, 30)
 
 
-def test_us12_ac2_replenishing_increases_available(
+def test_tc_us12_ac2_replenishing_increases_available(
     db_client: TestClient, engine: Engine, admin: dict[str, str], thali: uuid.UUID
 ) -> None:
     _put(db_client, thali, 50, admin)

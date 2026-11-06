@@ -18,6 +18,7 @@ from datetime import datetime, time, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.clock import IST
+from app.core.metrics import counts_order_outcome
 from app.models.capacity import DailyInventory
 from app.models.catalogue import MenuItem
 from app.models.enums import OrderStatus, PaymentCause, PaymentKind, PaymentStatus
@@ -30,6 +31,7 @@ from app.modules.ordering.refunds import RefundPart, refund_parts
 from app.modules.ordering.repository import OrderRepository
 from app.modules.ordering.retry import run_in_transaction
 from app.modules.ordering.schemas import (
+    AdminCancelOrderRequest,
     CancelledOrderOut,
     CancelOrderRequest,
     OrderOut,
@@ -64,6 +66,14 @@ class MenuNotOpenError(Exception):
     def __init__(self, opens_at: datetime) -> None:
         super().__init__(f"ordering opens at {opens_at.isoformat()}")
         self.opens_at = opens_at
+
+
+class ActiveOrderLimitError(Exception):
+    """FR-31: the Student already holds P-MAX_ACTIVE unfinished orders on that date."""
+
+    def __init__(self, max_active: int) -> None:
+        super().__init__(f"you may hold at most {max_active} active orders per service date")
+        self.max_active = max_active
 
 
 class UnavailableError(Exception):
@@ -114,6 +124,8 @@ class _PendingRefund:
 
 # T6 and T7 are the Student's cancels (FR-37); READY and terminal states are refused.
 _STUDENT_CANCELLABLE = frozenset({OrderStatus.ACCEPTED, OrderStatus.PREPARING})
+# The Administrator may also cancel a READY order (T9, FR-38).
+_ADMIN_CANCELLABLE = _STUDENT_CANCELLABLE | {OrderStatus.READY}
 
 
 def cancel_refund_paise(status: OrderStatus, paid_paise: int, late_refund_pct: int) -> int:
@@ -146,6 +158,7 @@ class OrderService:
         self.repo = OrderRepository(session)
         self.idempotency = IdempotencyService(session)
 
+    @counts_order_outcome("place")
     def place(
         self, student: User, request: PlaceOrderRequest, idempotency_key: str, now: datetime
     ) -> OrderOut:
@@ -168,7 +181,9 @@ class OrderService:
         if replay is not None:
             return self._view(uuid.UUID(replay.response["order_id"]))
 
-        settings = self.repo.get_settings("P-MENU_OPEN", "P-BOOK_CLOSE_MIN", "P-MAX_QTY")
+        settings = self.repo.get_settings(
+            "P-MENU_OPEN", "P-BOOK_CLOSE_MIN", "P-MAX_QTY", "P-MAX_ACTIVE"
+        )
         max_qty = int(settings["P-MAX_QTY"])
         if any(line.qty > max_qty for line in request.lines):
             raise QuantityLimitError(max_qty)
@@ -189,6 +204,23 @@ class OrderService:
             raise UnknownItemsError(unknown)
 
         self.repo.lock_student(student.id)
+        # Counted under the Student's lock, so two placements at once cannot both pass.
+        max_active = int(settings["P-MAX_ACTIVE"])
+        if self.repo.count_active_orders(student.id, slot.service_date) >= max_active:
+            raise ActiveOrderLimitError(max_active)
+
+        # Everything that needs no inventory or seat counter is priced and written
+        # before those rows are locked (CAFIITK-189). Every placement for an item waits
+        # on its one daily_inventory row, so what runs under that lock is what limits a
+        # menu-release rush (SADD 6.5). The Student's lock, already held, is all the
+        # subsidy needs. If the order cannot be priced as quoted, nothing is written
+        # yet and the checks below report as they always have.
+        reservation: _Reservation | None = None
+        quote = self._quote_if_priceable(student, request)
+        if quote is not None and quote.payable_paise == request.quoted_payable_paise:
+            reservation = self._add_order(student, request, idempotency_key, quote)
+            self.session.flush()
+
         stock = self.repo.lock_inventory(item_ids, slot.service_date)
         slot = self.repo.lock_slot(slot.id)
 
@@ -211,14 +243,53 @@ class OrderService:
         if unavailable or slot_unbookable:
             raise UnavailableError(unavailable, slot.id if slot_unbookable else None)
 
-        quote = QuoteService(self.session).price(student, request)
-        if quote.payable_paise != request.quoted_payable_paise:
-            raise PriceChangedError(quote)
+        if reservation is None:
+            # Priced again under the locks, as a quote taken now would be (FR-26).
+            quote = QuoteService(self.session).price(student, request)
+            if quote.payable_paise != request.quoted_payable_paise:
+                raise PriceChangedError(quote)
+            reservation = self._add_order(student, request, idempotency_key, quote)
 
+        actor = {"actor_id": str(student.id), "actor_role": student.role.value}
+        for line in request.lines:
+            row = stock[line.item_id]
+            self._change_allocated(
+                row, line.qty, "PORTIONS_ALLOCATED", reservation.order_id, **actor
+            )
+        before = slot.booked
+        slot.booked += 1
+        write_audit(
+            self.session,
+            action="SEAT_ALLOCATED",
+            entity_type="slot",
+            entity_id=str(slot.id),
+            before={"booked": before},
+            after={"booked": slot.booked, "order_id": str(reservation.order_id)},
+            **actor,
+        )
+        return reservation
+
+    def _quote_if_priceable(self, student: User, request: PlaceOrderRequest) -> QuoteOut | None:
+        """The quote, or None where pricing fails: an item that is no longer active,
+        which the availability check under the locks reports as unavailable.
+        """
+        try:
+            return QuoteService(self.session).price(student, request)
+        except UnknownItemsError:
+            return None
+
+    def _add_order(
+        self,
+        student: User,
+        request: PlaceOrderRequest,
+        idempotency_key: str,
+        quote: QuoteOut,
+    ) -> _Reservation:
+        """The PENDING_PAYMENT order with its lines, price snapshot and AUTH payment."""
         order = Order(
             id=uuid.uuid4(),
             student_id=student.id,
-            slot_id=slot.id,
+            slot_id=request.slot_id,
             status=OrderStatus.PENDING_PAYMENT,
             subsidy_applied=quote.subsidy_paise > 0,
         )
@@ -245,22 +316,6 @@ class OrderService:
         )
         self._record_transition(order, None, actor=student)
 
-        actor = {"actor_id": str(student.id), "actor_role": student.role.value}
-        for line in request.lines:
-            row = stock[line.item_id]
-            self._change_allocated(row, line.qty, "PORTIONS_ALLOCATED", order.id, **actor)
-        before = slot.booked
-        slot.booked += 1
-        write_audit(
-            self.session,
-            action="SEAT_ALLOCATED",
-            entity_type="slot",
-            entity_id=str(slot.id),
-            before={"booked": before},
-            after={"booked": slot.booked, "order_id": str(order.id)},
-            **actor,
-        )
-
         self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
         return _Reservation(order.id, payment.id, quote.payable_paise)
 
@@ -277,7 +332,8 @@ class OrderService:
 
         if order.status is not OrderStatus.PENDING_PAYMENT:
             # The hold expired while we waited; the late result changes nothing (FR-34).
-            if may_have_charged:
+            # The sweeper queued the void when it expired the order.
+            if may_have_charged and not self.repo.has_void(order.id, None):
                 self._queue_void(reserved)
         elif approved:
             order.paid_paise = reserved.amount_paise
@@ -288,6 +344,7 @@ class OrderService:
                 self._queue_void(reserved)
         return self._view(order.id)
 
+    @counts_order_outcome("cancel")
     def cancel(
         self,
         student: User,
@@ -373,6 +430,61 @@ class OrderService:
         )
         pending = self._record_refund(refund, student)
         self.idempotency.complete(student.id, idempotency_key, {"order_id": str(order.id)})
+        return pending
+
+    @counts_order_outcome("admin_cancel")
+    def admin_cancel(
+        self,
+        admin: User,
+        order_id: uuid.UUID,
+        request: AdminCancelOrderRequest,
+        idempotency_key: str,
+    ) -> CancelledOrderOut:
+        """UC-20 (FR-38): T6, T7 or T9 with the reason and a 100 % refund, sent after commit.
+
+        No ownership check and no cut-off: the Administrator resolves problems at the
+        counter, up to the moment the order is picked up.
+        """
+        cancelled = run_in_transaction(
+            self.session, lambda: self._admin_cancel(admin, order_id, request, idempotency_key)
+        )
+        if cancelled is not None:
+            self._deliver_refund(cancelled)
+        return self._cancelled_view(order_id)
+
+    def _admin_cancel(
+        self,
+        admin: User,
+        order_id: uuid.UUID,
+        request: AdminCancelOrderRequest,
+        idempotency_key: str,
+    ) -> _PendingRefund | None:
+        """Raising rolls everything back; None for a replay or nothing to send (FR-32)."""
+        replay = self.idempotency.claim(
+            admin.id, idempotency_key, {"order_id": str(order_id), **request.model_dump()}
+        )
+        if replay is not None:
+            return None
+        if self.repo.find_order(order_id) is None:
+            raise OrderNotFoundError
+        order = self.repo.lock_order(order_id)
+        if order.status not in _ADMIN_CANCELLABLE:
+            raise OrderConflictError(f"order is {order.status.value}", order)
+        if order.version != request.version:
+            # The kitchen or the Student changed it since the Administrator looked.
+            raise OrderConflictError("the order has changed", order, order.paid_paise)
+
+        self._move(order, OrderStatus.CANCELLED, actor=admin, reason=request.reason)
+        refund = Payment(
+            id=uuid.uuid4(),
+            order_id=order.id,
+            kind=PaymentKind.REFUND,
+            cause=PaymentCause.CANCEL,
+            amount_paise=order.paid_paise,
+            status=PaymentStatus.PENDING if order.paid_paise else PaymentStatus.SUCCEEDED,
+        )
+        pending = self._record_refund(refund, admin)
+        self.idempotency.complete(admin.id, idempotency_key, {"order_id": str(order.id)})
         return pending
 
     def _record_refund(self, refund: Payment, actor: User) -> _PendingRefund | None:

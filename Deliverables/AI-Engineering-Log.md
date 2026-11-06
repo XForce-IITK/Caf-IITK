@@ -39,7 +39,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E27 | An in-progress merge was cancelled by a stash taken to compare two test runs | Tooling mistake | Status check before committing | Merge redone from the committed state; no work lost |
 | E28 | The SRS does not say whether a discount window includes its end time; the AI chose start-inclusive, end-exclusive without asking | Specification ambiguity | Writing the pricing engine | Flagged in the PR; team decision pending |
 | E29 | Two simultaneous refreshes of one refresh token revoke all of the user's tokens, logging the user out | **Design risk** | Reproduced during code review | The client now makes one refresh call at a time (CAFIITK-177); the server-side behaviour is unchanged |
-| E30 | After the payment gateway was merged, the test setup loads settings before setting the test secret, so tests sign tokens with the short default key | **Test-validity regression** | Warning count rose from 1 to about 150 | Root cause identified; fix pending |
+| E30 | After the payment gateway was merged, the test setup loads settings before setting the test secret, so tests sign tokens with the short default key | **Test-validity regression** | Warning count rose from 1 to about 150 | Fixed by Bug CAFIITK-201 (#76, by a teammate). The suite now clears the cached settings after setting the test key, and a test checks the key's length. No `InsecureKeyLengthWarning` remains. |
 | E31 | US-04 AC1–AC2 and US-25 AC1–AC3 were proven on stand-in routes because the real endpoints did not exist yet | Verification gap | Planning | Real-endpoint tests assigned to CAFIITK-132, 153 and 147. US-04 AC2 now also passes on the real cancel endpoint (CAFIITK-153), and US-25 AC1–AC2 on order placement. Still on stand-in routes: US-04 AC1 (needs the price-change endpoint, CAFIITK-132) and US-25 AC3 (20 concurrent duplicates) |
 | E32 | The audit-isolation mistake of E21 and E26 was made a third time, in the order-placement tests | Test defect | Two tests passed alone and failed in the full suite | Assertions scoped to the test's own order |
 | E33 | Order placement was first written with its own copies of the orderable and bookable rules and its own clock module, while two open PRs were adding the same rules and a different file at the same path | Duplication and merge-conflict risk | Reading the open branches before raising the PR | Clock module made identical to the teammates' file; branch rebased once their PRs merged and switched to the shared rules |
@@ -84,6 +84,35 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E72 | For CAFIITK-134 the AI merged `develop` into the branch before merging, instead of rebasing as the revised sprint plan's rule 5 asks | Process lapse | The AI noticed when reading the revised plan | Later PRs rebased just before merge |
 | E73 | The job that starts preparation was registered in an outdated version of the worker's job list, written before a teammate added another job; it would have left auto-prep unscheduled | Stale-code slip | Failing test | Registered in the current list beside the teammate's job |
 | E74 | Local failures of the US-30 AC1 and AC4 rush tests were put down to machine load in a PR without evidence, repeating E63 | Unverified attribution | Reading E62 and E63 in this log | Investigated: a deadlock fix (E62, #54) was not yet merged, and the machine had run out of local ports (about 16,500 closed connections against 16,384 ports). PR corrected; CI, which runs both tests, passed |
+| E75 | For CAFIITK-140 the AI said a concurrency test was included before it had written one | Premature claim | The AI noticed while reviewing its own summary | The test was written and run (a capacity cut waiting on a booking sees the new seat) before the PR was opened |
+| E76 | Told that "#82 is approved", the AI took it to mean the author's #83 and moved CAFIITK-162 to Done in the same step as the merge; the merge was refused as unconfirmed, leaving Jira ahead of GitHub | Process lapse | Merge refused | Issue moved back to In Review; #83 merged and the issue closed only after the author confirmed the PR number |
+| E77 | The first CAFIITK-163 acceptance tests assumed every order transition was made by the Student, missed the refund entry, and read rows left by other tests (the audit log is never emptied, by design) | Test defect | Four failing tests, before the PR | Expected actors and entries corrected; each test filters on values of its own |
+| E78 | The CAFIITK-162 utilisation bars passed text as the progress bar's accessibility value, which Flutter rejects | Implementation defect | Widget tests, before the PR | The figure moved into the bar's label |
+| E79 | A draft of the US-31 results gave the request total as "7,000" without adding it up; the total was 7,811 | Arithmetic error | The AI checked the sum before committing | Corrected before commit |
+| E80 | The PR #90 description mentioned a GitHub handle guessed from a teammate's name, which could have notified an unrelated account | Risk | The AI noticed after opening the PR | Mention removed |
+| E81 | The `caf_app` role (CAFIITK-163) relies on the login user being allowed to switch to it. On a managed database (RDS) this needs an explicit grant, which the migration makes, but it has been checked only on the local stack | **Deployment risk** | Design of the role switch | Pending: to be confirmed on AWS (CAFIITK-190); flagged in #86 |
+| E82 | US-31's latency targets are not met on the local stack, before or after CAFIITK-189. One read got no response under peak load | **Quality risk** | The US-31 acceptance tests (CAFIITK-156) | Pending: to be measured again on AWS (CAFIITK-190), with the load generator off the instance |
+| E83 | Nothing delivered queued payment voids or unacknowledged refunds. VOID rows and PENDING refunds were written "for the worker", but no job sent them, and nothing in the app called `gateway.void` | **Implementation gap** | Designing the hold sweeper (CAFIITK-149), whose late-approval path relies on a void | A `payment-outbox` job sends them with no transaction open and marks each row done once acknowledged (#68) |
+| E84 | When deciding how to split a cancel's refund, the system counted an authorisation that had been voided as a charge. A cancel after a superseded modification could therefore refund against a voided authorisation, which mockpay refuses | **Design defect** | Designing the sweeper's void path | Voided authorisations are left out of the refund split; test against real mockpay (#68) |
+| E85 | The AI assumed E30 was only an out-of-date line in this log and planned no fix. Tests were still signing tokens with the 17-byte default key | Unverified assumption | The warning was still in the CAFIITK-149 test run | Reported to the author; fixed separately as Bug CAFIITK-201 (E30) |
+| E86 | The first CAFIITK-157 version cut the pool wait to 3 s, which turned part of the US-30 rush into 503s (`{201: 30, 409: 169, 503: 1}`) | **Regression** | Full-suite runs: US-30 AC1 failed in 2 of 3 | Pool wait back to the 30 s default. The rush and outage tests then passed together 3 times (#73). An earlier failure of the same test was not captured, so its cause is unconfirmed |
+| E87 | A database that accepts the connection but never answers (a network partition, not a stopped server) can still hang a pooled connection's health check, because libpq has no client-side statement timeout | **Availability risk** | Reviewing the CAFIITK-157 design | Pending: left out of scope and stated in #73. It would need TCP keepalive settings |
+| E88 | The first NFR-3 check compared only the faulted transaction with its snapshot. An operation wrongly split across two transactions would have passed it | **Test design gap** | The AI's own review of what the check could miss | A recovery check was added: after the sweeper and outbox run, every counter must match the orders holding it. A control test splits an operation and must fail (#77) |
+| E89 | The first performance baseline (#89) was measured under conditions that skewed it: workloads shared one database, so NFR-12's kitchen reads carried NFR-10's 1,200 orders; the load client went through Docker Desktop's port proxy; and a later run was made on battery power | **Measurement validity** | Profiling for CAFIITK-189, and checking the laptop's power state | Each workload now starts from an empty database (`--fresh`). Later runs use a client inside the Compose network and mains power, and the report marks the first run as superseded (#89, #91) |
+| E90 | The draft CAFIITK-189 report and a code comment said a pool of 5 measured best "on every workload". NFR-12's order p95 was better with a pool of 20 | Overclaim | The AI checked each figure against the raw run data before committing | Claim narrowed in the report and the comment (#91) |
+| E91 | Two CAFIITK-189 experiments went wrong. 4 workers with a pool of 20 each exceeded PostgreSQL's 100 connections (503 "too many clients"). Separately, a keep-alive race was wrongly blamed for requests that got no response | Experiment errors | Server logs, and the keep-alive change not removing the errors | Pool reduced to fit the connection budget. The keep-alive change was reverted, and the errors were traced to Docker Desktop's port proxy. One `ReadError` in about 4,000 requests inside the network is still unexplained |
+| E92 | The harness's NFR-10 seed, and the first run with `--fresh`, each broke a schema CHECK: at most 500 portions per item, and a service day's default capacity of 1–100 | Implementation defect | Both runs stopped with the CHECK violation | Orders spread over several items; the design capacity used for the day (#89) |
+| E93 | The first performance report gave "4,840 requests" without adding them up; the total was 5,941 | Arithmetic error | The AI checked the sum before committing | Corrected before commit |
+| E94 | An order-history test assumed a modified order's version is 2 | Test defect | Failing test run | Assertion removed |
+| E95 | The security fuzz pass changed shared settings through the API (it sends valid values too), so a later file's subsidy test failed | Test isolation defect | Full-suite run | The campaign restores the settings table after each test |
+| E96 | The Android package was named `in.ac.iitk…`; `in` is a reserved word in Java, so the build failed | Implementation defect | Build failure | Renamed to `com.xforce.cafiitk` |
+| E97 | A Gradle build report was committed with the Android project | Tooling mistake | Reading the commit before review | Removed in a follow-up commit, and `build/` ignored |
+| E98 | Closing comments on Jira tasks cited test files that do not hold those tests (NFR-31, US-15, FR-47) | Hallucinated reference | Checking the files after posting | Comments corrected |
+| E99 | The CI job was renamed on the belief that branch protection was off. A repository ruleset, which that API does not show, required the old name, so every merge was blocked | **Unverified assumption** | The merge was refused | Name restored, with a comment saying it is a required check |
+| E100 | The traceability script's pattern missed test names that continue after the AC number, reporting dozens of false gaps | Verification flaw | Results contradicted known-passing rows | Pattern fixed before any row was changed |
+| E101 | A PR description said the team member chose not to audit rate-limited logins; it was the AI's proposal | Misattribution | Re-reading the PR | Corrected; the author then confirmed the decision |
+| E102 | A local full-suite failure (a mockpay test) came from running a Flutter build at the same time | Verification flaw | It passed 3 of 3 alone, and in CI | Suites run one at a time afterwards |
+| E103 | The AI told the author that everything left was waiting on AWS; only 5 of 13 items were | Overclaim | The author questioned it | Corrected with a per-issue breakdown |
 
 ---
 
@@ -512,3 +541,332 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **How it was checked:** 8 tests against PostgreSQL, including the acceptance criterion (nothing at 12:19 for a 12:30 slot, PREPARING with actor SYSTEM at 12:20), only ACCEPTED orders moving, repeat runs, a late run, the version bump, an order cancelled meanwhile, and the job run end to end. A test caught one slip while drafting (E73). CI passed, including the full suite. The PR was approved by a teammate (Suryansh) with no change requests.
 - **What changed:** the PR's explanation of two local rush-test failures was corrected (E74).
 - **Outcome:** accepted.
+
+## Deliverable 3 entries
+
+### Change an item's price safely (CAFIITK-132, US-07)
+
+- **Asked for:** edit an ACTIVE item's description, category and price (FR-9). A price change must never alter an existing order's price snapshot.
+- **AI produced:**
+  - `PATCH /admin/items/{id}`: the name is not editable; an empty body or a null value is a 422.
+  - The item row is locked as flagging locks it. Only the fields that change are audited, in the same transaction; an edit that changes nothing writes nothing.
+  - US-04 AC1 (Kitchen Staff cannot change a price) moved from a stand-in route to this endpoint, closing the gap noted in E31.
+  - The regenerated client.
+- **How it was checked:** 20 tests. The acceptance test places a real order at ₹80, changes the price to ₹90, and checks that the order's snapshot still says ₹80 while a new quote says ₹90. The full backend suite passed. Tried by hand on the Docker Compose stack. Approved by a teammate (Rudransh) with no change requests; the author merged it.
+- **Outcome:** accepted.
+
+### Protect me from price changes at checkout (CAFIITK-145, US-20)
+
+- **Asked for:** an acceptance test for US-20 using a real price change. The behaviour already existed; the traceability matrix recorded it as tested under another name.
+- **AI produced:** one test. A 5 % discount makes the Rs 80 Thali the criterion's Rs 76 quote. The Administrator then changes the price, and confirming at Rs 76 gets 409 with a fresh quote. Nothing is reserved and no payment is attempted.
+- **How it was checked:** the order-placement tests (35) and CI. Approved by a teammate (Suryansh) with no change requests.
+- **Outcome:** accepted.
+
+### Remove a menu item (CAFIITK-133, US-08)
+
+- **Asked for:** soft-delete to REMOVED (FR-10). Orders already placed must proceed and keep their snapshot.
+- **AI produced:**
+  - `DELETE /admin/items/{id}`, which sets the item to REMOVED; removing it again is a no-op. Audited in the same transaction.
+  - The AI traced every place that reads an item's status and found nothing else to change: the menu, order placement, editing, flagging, inventory and proposal approval already treated REMOVED correctly.
+- **How it was checked:** 9 tests, one per acceptance criterion. AC2 takes an order placed before the removal through the kitchen to PICKED_UP, with its history still naming the item. Tried by hand on Docker Compose. Approved by a teammate (Suryansh) with no change requests.
+- **Outcome:** accepted.
+
+### Change slot capacity safely (CAFIITK-140, US-15)
+
+- **Asked for:** change one slot's capacity without dropping bookings (FR-18). A window change that would remove a booked slot must be refused. Before this, any reconfiguration of a day with orders was refused.
+- **AI produced:**
+  - `PATCH /admin/slots/{id}`: a capacity below the booked seats is a 409, and nothing changes. The slot is locked as order placement locks it.
+  - Reconfiguring a day with orders now keeps the slots orders point at, with their IDs and bookings. It refuses (409) only if one of those slots would disappear or fall below its bookings, and regenerates the rest. The day's slots are locked in ascending ID, the system's lock order.
+  - A design choice flagged in the PR: a kept slot takes the new default capacity.
+- **How it was checked:** 16 new tests and 5 rewritten ones. They include a concurrency test on PostgreSQL in which a capacity cut waits for a booking that holds the slot lock, and then sees the new seat (E75). The full suite passed (819). Tried by hand on Docker Compose. Approved by a teammate (Rudransh) with no change requests, so the flagged choice stands.
+- **Outcome:** accepted.
+
+### Monitor the day (CAFIITK-162, US-37)
+
+- **Asked for:** the Administrator's list of the day's orders, with slot, state and Student filters (FR-45), and a utilisation view that updates within 30 s (FR-46).
+- **AI produced:**
+  - `GET /admin/orders`, filtering by state (repeatable), slot, and part of a Student's name or email; wildcard characters are matched literally.
+  - `GET /admin/utilisation`: seats per slot, portions per item, and a count of orders in every state.
+  - Two Administrator tabs. The utilisation tab refreshes every P-POLL (10 s) while it is open, and keeps the last figures if a refresh fails.
+  - The regenerated client.
+- **How it was checked:**
+  - 22 backend tests, through real orders, including one cancelled through the API. 4 widget tests; E78 was caught by these.
+  - The full backend (850) and client suites; client coverage 97 %.
+  - The endpoints were tried by hand on Docker Compose. The new tabs were not opened in a browser, as the PR stated.
+  - Approved by a teammate (Kshitij) with no change requests.
+- **What changed:** the merge was held until the author confirmed which PR was approved (E76).
+- **Outcome:** accepted.
+
+### Trustworthy audit trail (CAFIITK-163, US-38)
+
+- **Asked for:** audit search by entity, carrying the correlation ID (CAFIITK-180) and the price-change audit (CAFIITK-132). The application's role must be refused UPDATE and DELETE on the audit log (NFR-26), and no secret may appear in results.
+- **AI produced:**
+  - Migration 0005: a `caf_app` role with full rights on the business tables, but only INSERT and SELECT on `audit_log`. Every application transaction switches to it, so the database itself refuses to change an audit entry.
+  - The test client runs the same way, so the whole suite exercises the role's rights.
+  - `GET /admin/audit`: search by time range, actor, entity and action, a page at a time. An order's ID also finds its portion and seat changes and its refund.
+  - Values that look like secrets are redacted again on the way out.
+  - Search indexes, and the regenerated client.
+- **How it was checked:**
+  - 19 tests, including all four acceptance criteria. AC3 tries UPDATE, DELETE and TRUNCATE as `caf_app` and gets a permission error. E77 was fixed before the PR.
+  - The full suite passed with every transaction running as `caf_app` (895 tests, and 917 after merging `develop`).
+  - The migration was applied by hand to the existing Docker Compose database and the role's rights checked.
+  - Approved by a teammate (Kshitij) with no change requests.
+- **What changed:** the RDS membership question was left open for the deployment (E81).
+- **Outcome:** accepted.
+
+### Flutter client tests (CAFIITK-186), and Bug CAFIITK-202
+
+- **Asked for:** widget and provider tests for the auth, Student, Kitchen and Administrator flows. The 80 % gate was already enforced, and coverage was already 97 %.
+- **AI produced:**
+  - The AI read each client test against the SRS acceptance criteria. Tests that check a criterion's client side were renamed with its TC ID, across 15 stories, so the traceability matrix can find them.
+  - New tests: a completed order's full history (US-29 AC2); the server's reason for a refused service window (US-14 AC2, US-15 AC2); every finished order state in My orders.
+  - While mapping US-10 AC1, the AI found that the Student menu never showed an item's category. The author had it raised as Bug CAFIITK-202 ("Found by: Code review"). It was fixed in the same PR, with the category labels shared with the Administrator's items tab.
+- **How it was checked:** 146 client tests, and the new US-10 check fails without the fix. Approved by a teammate (Kshitij) with no change requests.
+- **Outcome:** accepted. CAFIITK-202 counts towards the D3 defect total.
+
+### Ordering stays fast at peak (CAFIITK-156, US-31)
+
+- **Asked for:** verify US-31's two latency criteria with Rudransh's CAFIITK-188 numbers and harness, and record them.
+- **AI produced:**
+  - Two named acceptance tests on top of the harness, asserting the real targets at full scale against a live stack. They are skipped in CI, which already runs the harness at 5 % scale.
+  - The AI ran them on the Docker Compose stack before and after CAFIITK-189, and added §5 to the Performance Report.
+- **How it was checked:** both tests failed in both runs. After CAFIITK-189:
+  - AC1 (orders): p95 570 ms against a 500 ms target. The hot-row lock wait fell from 190 ms to 15 ms.
+  - AC2 (reads): p95 about 1.1 s against a 200 ms target.
+  - One read got no response.
+
+  The figures were reported as measured (E79, E82). Approved by a teammate (Kshitij) with no change requests.
+- **What changed:** the report noted that reads spend most of their time before reaching the application, as input for CAFIITK-189. The author decided to close the issue as verified and recorded, with a Jira comment that US-31 is not yet met.
+- **Outcome:** accepted as a measurement. US-31 itself is pending the AWS run (E82).
+
+### Holds never leak after a crash (CAFIITK-149, US-24)
+
+- **Asked for:** the hold sweeper (FR-34 ★). It expires PENDING_PAYMENT orders and unfinished modifications after P-HOLD_EXPIRY, recovers holds at worker start-up (NFR-15), and voids a payment approval that arrives after expiry.
+- **AI produced:**
+  - The `hold-sweeper` job. It runs one short transaction per order, under the order lock, in the canonical lock order. An expired modification gives back what it took, and the order keeps its old cart, slot and price.
+  - While designing it, the AI found that nothing ever sent the voids and refunds queued for the worker (E83). It added the `payment-outbox` job, which reads in one transaction, calls mockpay with none open (NFR-6), and marks the row done in a second.
+  - A fix to how refunds were split: a voided authorisation no longer counts as a charge (E84).
+- **How it was checked:**
+  - 11 tests against PostgreSQL, including TC-US24-AC1 to AC3. One runs against real mockpay, which refuses the late approval because the void reached it first.
+  - The full suite passed, except the Windows-only SIGTERM test. One earlier failure was not captured, as the PR says.
+  - On Docker Compose, the author killed caf-api while an order waited on mockpay. The sweeper expired the order 119 s later, within the 150 s limit; the counters returned to zero and the void was delivered.
+  - Approved by a teammate (Suryansh) with no change requests.
+- **What changed:** the AI had assumed E30 needed no fix; it did (E85).
+- **Outcome:** accepted. FR-34 passes, so all ten critical requirements now pass.
+
+### Cancel an order on a Student's behalf (CAFIITK-161, US-36)
+
+- **Asked for:** the Administrator cancels an ACCEPTED, PREPARING or READY order with a mandatory reason, with a 100 % refund (FR-38).
+- **AI produced:**
+  - `POST /admin/orders/{id}/cancel`, with an idempotency key. It releases the seat always, and the portions only from ACCEPTED, following the state machine.
+  - The Administrator and the reason are recorded on the transition, with the audit row in the same transaction.
+  - The refund goes to mockpay after commit, and the payment outbox retries one left unacknowledged.
+  - The regenerated client.
+- **How it was checked:**
+  - 16 tests, including TC-US36-AC1 and AC2.
+  - Tried by hand on Docker Compose with real mockpay: a READY order was cancelled with a full refund, and only the seat came back.
+  - Approved by a teammate (Suryansh) with no change requests.
+- **Outcome:** accepted.
+
+### Graceful behaviour when the database is down (CAFIITK-157, US-32)
+
+- **Asked for:** while the database is down, answer within 5 s with 503 and `Retry-After` and write nothing; resume within 30 s of its return without a restart (NFR-16).
+- **AI produced:**
+  - A 2 s connect timeout, with pool pre-ping kept.
+  - Error handlers that turn a lost connection into 503 with `Retry-After: 5`. A statement error, such as a lock timeout, stays a 500, so bugs are not hidden.
+  - A worker that waits out an outage instead of exiting.
+- **How it was checked:**
+  - 10 tests on a dedicated PostgreSQL container that the tests kill and restart. They include the database dying during the payment call, which leaves only a hold for the sweeper to release.
+  - On Docker Compose, the author stopped and restarted `db`. Orders got 503 in 3–4 s and succeeded 0.2 s after the restart, with no API restart.
+  - Approved by a teammate (Suryansh) with no change requests.
+- **What changed:**
+  - The AI's first version shortened the pool wait, which broke the rush test (E86).
+  - The tests use `127.0.0.1`, because `localhost` resolves to two addresses and doubled the timeout.
+  - A merge conflict with #69 was resolved at the author's request.
+  - A network partition is left as a known limit (E87).
+- **Outcome:** accepted.
+
+### Failure-injection tests (CAFIITK-184; NFR-3, NFR-6)
+
+- **Asked for:** inject failures part-way through every write operation and prove nothing partial is kept; prove no payment or LLM call happens with a transaction open.
+- **AI produced:**
+  - A hook that fails the Nth SQL statement of an operation, run once for every statement. That is 271 faults across nine operations: create, payment failure, three kinds of modification, cancel, admin cancel, hold expiry and proposal execution.
+  - After each fault, the whole database must equal a snapshot taken as the failed transaction began.
+  - For NFR-6, spies record whether any pooled connection is checked out when the gateway or LLM is called.
+- **How it was checked:**
+  - 12 tests, 2 min. A dry run maps statements to transactions, so only the faulted transaction is snapshotted; the first version took 5.6 min.
+  - The full suite passed.
+  - Approved by a teammate (Suryansh) with no change requests.
+- **What changed:** the AI found its first check could not see an operation split across transactions, and added a recovery check and a control test (E88).
+- **Outcome:** accepted. No defects were found, so no Bugs were filed.
+
+### Load and performance measurement (CAFIITK-188; NFR-8 – NFR-12)
+
+- **Asked for:** measure latency, throughput and agent run time against NFR-8 to NFR-12, and record the environment, command and results.
+- **AI produced:**
+  - `tests/perf.py`, a harness that drives a running caf-api over HTTP for each NFR workload. It reports percentiles, errors and throughput against each target.
+  - Around each workload it reads `/metrics` (CAFIITK-181) for the server's time per route and its row-lock waits.
+  - A small-scale run in CI.
+  - `Deliverables/Performance-Report.md`.
+- **How it was checked:**
+  - The harness's own 8 tests, including one that the server counts the same orders the client sent.
+  - Report figures checked against the raw JSON (E93).
+  - Approved by a teammate (Shashi) with no change requests.
+- **What changed:** the first baseline was skewed by how it was run (E89), which was found during CAFIITK-189. `--fresh` was added before #89 merged. The measurement method was then corrected, and the report keeps the first run as a record only.
+- **Outcome:** accepted. The AWS run, which gives the numbers of record, is pending on CAFIITK-190 (E82).
+
+### Bottleneck analysis and optimisation (CAFIITK-189)
+
+- **Asked for:** profile the menu-release hot-row contention; try a conditional atomic UPDATE, short-TTL caching and pool sizing; keep only what measurably helps, with before-and-after numbers.
+- **AI produced:**
+  - Profiles of caf-api under the read and order loads, showing three problems:
+    - connection churn: 442 new connections in 30 s of reads;
+    - the hot inventory row held for a whole transaction;
+    - a lock holder slowed by the Python GIL.
+  - Three changes: a fixed pool with no overflow; placing the order before the inventory and slot rows are locked; and `FOR NO KEY UPDATE` on those rows, so the reordering cannot deadlock. The worker count is now configurable.
+  - Each candidate built as its own image and swapped under one Compose stack, then compared over interleaved runs.
+- **How it was checked:**
+  - The full suite (923 tests, coverage 98.2 %), including the concurrency, failure-injection and database-down tests.
+  - Interleaved before-and-after runs: mean hot-row lock wait 1,128 → 73 ms (NFR-8) and 417 → 10 ms (NFR-12); NFR-8 p95 down 36 %; NFR-12 mean order time down 25 %; reads unchanged.
+  - Approved by two teammates (Shashi and Suryansh) with no change requests.
+- **What changed:**
+  - A claim in the draft report was narrowed (E90).
+  - Two wrong experiments were corrected (E91).
+  - The conditional UPDATE and caching were not kept, with reasons in the report: the lock wait is now under 4 % of order time, and caching could save at most about a quarter of a menu read.
+- **Outcome:** accepted.
+  - The NFR-8, NFR-9 and NFR-12 targets are still missed on the local stack (E82).
+  - NFR-9 does not define think time; the report raises this for the team. Team decision pending.
+
+### Rate limits and passwords in errors (CAFIITK-182; NFR-20, NFR-21), and Bug CAFIITK-199
+
+- **Asked for:** limits on failed logins and order requests that hold across API workers (NFR-21), and checks that a password never leaves the server (NFR-20).
+- **AI produced:**
+  - Counters in the shared `rate_limits` table, taken with one atomic upsert that stops at the cap. A login reserves its place before the password is checked and gives it back on success, so only failures count.
+  - Limits per account and per address for logins, and per Student for create, modify and cancel.
+  - An hourly job that deletes old counters.
+  - While testing, the AI found that a 422 echoed the rejected password back to the client. It raised Bug CAFIITK-199 and fixed it: validation errors no longer include the input.
+- **How it was checked:**
+  - Tests against PostgreSQL. One sends 20 parallel guesses across two real API processes; exactly 5 are checked and 15 get 429.
+  - The full suite passed.
+  - Approved by a teammate (Rudransh) with no change requests.
+- **Outcome:** accepted.
+
+### One Student, a limited number of orders (CAFIITK-151, US-26)
+
+- **Asked for:** refuse a new order when the Student already has P-MAX_ACTIVE unfinished orders that day (FR-31).
+- **AI produced:** the check, made under the Student row lock that ordering already takes, so two parallel requests cannot both pass. It answers 422.
+- **How it was checked:** TC-US26-AC1 and AC2, and the full suite. Approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### My orders (CAFIITK-146, US-21)
+
+- **Asked for:** a Student's past orders, each showing every price snapshot and any refund (FR-27, FR-28).
+- **AI produced:**
+  - `GET /orders`, newest first, capped at 200.
+  - An order's detail now includes its snapshots and refunds.
+  - The client's "My orders" list and order history screens.
+- **How it was checked:**
+  - TC-US21-AC1 and AC2, plus ownership tests: another Student's order gives 404.
+  - Client widget tests.
+  - Approved by a teammate (Rudransh).
+- **What changed:**
+  - One test assumed a modified order's version is 2 (E94).
+  - A repository method was renamed so it did not clash with a teammate's.
+- **Outcome:** accepted with modifications.
+
+### Staff accounts (CAFIITK-128, US-03)
+
+- **Asked for:** the Administrator creates Kitchen Staff and Administrator accounts and deactivates or reactivates them (FR-2, FR-3).
+- **AI produced:**
+  - `/admin/users`. Deactivation takes effect at once for logins, refresh tokens and access tokens.
+  - An Administrator cannot change their own account (409).
+  - Every change is audited, without the password.
+  - The Staff tab in the Administrator dashboard.
+- **How it was checked:**
+  - TC-US03-AC1 to AC3 and the backend tests.
+  - Client widget tests. One first tapped the wrong widget and was corrected.
+  - Approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### Adversarial and security campaign (CAFIITK-185), and Bugs CAFIITK-200, 203 and 204
+
+- **Asked for:** attack the finished system and log every finding as a Bug. The author waited until every feature was merged before running the final pass.
+- **AI produced:**
+  - A permission matrix of all 46 routes, checked anonymously and for every role. It fails CI if a new route is not listed.
+  - Probes for:
+    - reading or changing another Student's order;
+    - forged and misused tokens;
+    - setting server-owned fields;
+    - price and quantity tampering;
+    - another Student's idempotency key.
+  - A fuzz pass that sends hostile bodies, fields, query parameters, path parameters and keys to every route, expecting no 5xx.
+- **Findings (all raised as Bugs and fixed):**
+  - **CAFIITK-200 (first pass):** a NUL character in request text gave a 500.
+  - **CAFIITK-203:** the same problem in six text query parameters.
+  - **CAFIITK-204:** an audit cursor beyond the bigint range gave a 500.
+  - No authorisation or tampering issue was found.
+- **How it was checked:**
+  - Each failure was reproduced and traced to its PostgreSQL error before it was raised.
+  - The full suite passed after the fixes.
+  - The fixes were approved by a teammate (Rudransh). The campaign PR was stacked on the fix PR and reached `develop` through it, so it had no separate approval.
+- **What changed:** the fuzz pass changed shared settings, which broke a later test file (E95).
+- **Outcome:** accepted.
+
+### Android build (CAFIITK-192; NFR-34)
+
+- **Asked for:** an Android app from the same Flutter code.
+- **AI produced:**
+  - The Android project, with the internet permission.
+  - A network rule that allows plain HTTP only to the developer's machine.
+  - README steps for the build.
+  - No Dart code changed.
+- **How it was checked:**
+  - The author installed the release APK on a physical phone, connected to the Compose stack. They registered, set up the day as Administrator, then ordered, tracked and cancelled as a Student. Each step was confirmed in the server logs and the database, including the refund.
+  - The first order attempts were refused because ordering had not opened yet, which is correct behaviour.
+  - Approved by a teammate (Rudransh).
+- **What changed:** an invalid package name (E96), and a build report committed by mistake (E97).
+- **Outcome:** accepted with modifications.
+
+### Closing requirement tasks with evidence, and Bug CAFIITK-205
+
+- **Asked for:** close every backlog requirement task the merged work satisfies, after checking each one.
+- **AI produced:**
+  - For each task, a check against the SRS text and the tests on `develop`, then a comment citing the PR and tests.
+  - Tasks still failing or blocked were left open, with the reason.
+  - Checking FR-47 turned up a gap: failed logins were never audited. The AI raised Bug CAFIITK-205 and fixed it.
+  - The AI proposed not auditing logins refused by the rate limit, because those are unbounded and the audit log is append-only. The author confirmed this decision.
+- **How it was checked:**
+  - Each closure cites specific tests. Two comments first named the wrong test file (E98).
+  - The CAFIITK-205 fix was approved by a teammate (Rudransh), and was seen working on the live stack.
+- **Team decision:** the author decided to close NFR-8, NFR-9 and NFR-12 even though they fail on the local stack. Each closing comment says "target not met" and lists the numbers and the remedies not done. The traceability matrix keeps them as Fail.
+- **Outcome:** accepted.
+
+### Discount and subsidy screens (FR-22, FR-23)
+
+- **Asked for:** the discount-rule and subsidy APIs were merged, but the Administrator had no screen for either. The author asked for one.
+- **AI produced:**
+  - A Discounts tab: list, add, edit, deactivate.
+  - A Subsidy tab: the amount and cap, and an eligibility switch per Student.
+  - The generated client sends unset fields as null, which the server refuses, so every edit sends the whole rule.
+- **How it was checked:**
+  - 13 widget tests.
+  - The author tried both tabs by hand on the stack, and each action was confirmed in the logs and the audit table.
+  - Approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### Jira key in every commit (CAFIITK-124; NFR-44)
+
+- **Asked for:** CI should also reject commits without a Jira key. Merge commits are excepted.
+- **AI produced:** a step that checks each of a PR's own commits. It was tested locally on real commit ranges, including a negative case.
+- **What changed:** the first version renamed the CI job, which blocked every merge (E99).
+- **How it was checked:** the PR's own CI run passed, and later PRs passed the check. Approved by a teammate (Rudransh).
+- **Outcome:** accepted with modifications.
+
+### Final regression and traceability matrix (CAFIITK-193)
+
+- **Asked for:** a regression pass on `develop`, and the traceability matrix completed for D3.
+- **AI produced:**
+  - The full backend and client suites run on `develop`.
+  - The matrix brought up to date: Jira statuses from Jira, PR numbers from merged PR titles, and a script that confirms every listed acceptance criterion has a test named for it.
+- **What changed:** the first version of that script reported dozens of tests as missing that existed (E100).
+- **Team evaluation:** accepted; the PR was approved by a teammate (Rudransh) with no change requests, then merged.

@@ -14,7 +14,10 @@ from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import Engine
+from sqlalchemy.exc import DBAPIError
 
+from app.core import context
+from app.core.logs import configure_logging
 from app.worker.jobs import JOBS, Job, all_jobs
 from app.worker.leader import LeaderLock
 
@@ -27,11 +30,13 @@ class LostLeadershipError(RuntimeError):
 
 def _guarded(job: Job) -> Any:
     def run() -> None:
-        try:
-            job.func()
-        except Exception:
-            # One failing run must not stop the job or the worker; the next interval retries.
-            log.exception("job %s failed", job.name)
+        # NFR-29: one correlation ID per job run, on its log lines and audit rows.
+        with context.correlation():
+            try:
+                job.func()
+            except Exception:
+                # One failing run must not stop the job or the worker; the next interval retries.
+                log.exception("job %s failed", job.name)
 
     return run
 
@@ -82,11 +87,19 @@ class Worker:
             self._scheduler = None
         self.lock.release()
 
+    def _try_acquire(self) -> bool:
+        try:
+            return self.lock.try_acquire()
+        except DBAPIError:
+            # NFR-16: the database is down; keep waiting rather than exit.
+            log.warning("database unavailable; retrying in %.0f s", self._retry_s)
+            return False
+
     def run(self, stop: threading.Event) -> None:
         """Wait to become leader, then run jobs until `stop` is set or leadership is lost."""
         try:
             while not stop.is_set():
-                if self.lock.try_acquire():
+                if self._try_acquire():
                     self.start()
                     break
                 stop.wait(self._retry_s)
@@ -101,7 +114,7 @@ class Worker:
 def main() -> int:
     from app.db.session import get_engine
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging()
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda *_: stop.set())

@@ -50,11 +50,12 @@ def test_preflight_allows_the_headers_the_client_sends() -> None:
         assert header in allowed
 
 
-def test_retry_after_is_readable_by_the_browser() -> None:
+def test_retry_after_and_request_id_are_readable_by_the_browser() -> None:
     client = TestClient(create_app())
     response = client.get("/health", headers={"Origin": "http://localhost:3000"})
 
-    assert response.headers["access-control-expose-headers"] == "Retry-After"
+    exposed = response.headers["access-control-expose-headers"].split(", ")
+    assert sorted(exposed) == ["Retry-After", "X-Request-ID"]
 
 
 def test_production_allows_only_the_configured_origin(production: TestClient) -> None:

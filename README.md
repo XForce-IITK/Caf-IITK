@@ -20,10 +20,17 @@ Requirements and design: `Deliverables/` (SRS v2.0 and SADD).
 ```sh
 cp .env.example .env          # then set CAF_JWT_SECRET
 docker compose up --build
-curl localhost:8000/health    # {"status":"ok"}
+curl localhost:8000/health    # {"status":"ok"}     liveness
+curl localhost:8000/ready     # {"status":"ready"}  database reachable, else 503
+curl localhost:8000/metrics   # Prometheus text format
 ```
 
+`docker compose ps` shows `api` as healthy only while `/ready` succeeds (NFR-31).
+
 API docs: http://localhost:8000/docs
+
+The AWS deployment (EC2 + RDS, nginx with TLS) uses `docker-compose.prod.yml`;
+see [deploy/README.md](deploy/README.md).
 
 ## Backend development
 
@@ -94,6 +101,32 @@ Point the client at another API with
 browser calls from any localhost port; in production set `CAF_CORS_ORIGINS` to
 the client's origin (NFR-27).
 
+### Android
+
+The same codebase builds an Android app (package `com.xforce.cafiitk`). The
+Android SDK and `adb` (in `~/Android/Sdk/platform-tools`) must be installed;
+check with `flutter doctor`.
+
+```sh
+cd app
+flutter build apk --release --dart-define=API_BASE_URL=https://<deployed host>
+# build/app/outputs/flutter-apk/app-release.apk
+```
+
+To try it on a phone against the local stack, enable USB debugging, connect
+the phone, and forward its port 8000 to this machine:
+
+```sh
+adb reverse tcp:8000 tcp:8000
+flutter run -d <device id> --dart-define=API_BASE_URL=http://localhost:8000
+```
+
+On the emulator, use `http://10.0.2.2:8000` instead. Plain HTTP is allowed only
+to `localhost`, `127.0.0.1` and `10.0.2.2`
+(`android/app/src/main/res/xml/network_security_config.xml`); any other host
+needs HTTPS. The release APK is signed with the debug key, which is fine for
+sideloading but not for a store.
+
 ### Login, routing and networking
 
 - `lib/auth/session.dart` holds the session (`sessionProvider`). Tokens are kept
@@ -122,6 +155,9 @@ preparing order after a confirmation that says what is refunded, and
 `modify_order.dart` lets the Student change the items or slot of an accepted
 order: the draft starts from what the order holds, is priced through
 `POST /orders/{id}/quote`, and is applied with `PATCH /orders/{id}`.
+`order_history.dart` is "My orders" (`/student/orders`): the Student's orders,
+newest first, and for each one its status history, every price snapshot
+version as it was shown, and every refund (FR-28).
 
 ### API client
 

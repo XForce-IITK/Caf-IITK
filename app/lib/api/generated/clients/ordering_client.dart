@@ -5,6 +5,8 @@
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
+import '../models/admin_cancel_order_request.dart';
+import '../models/admin_order_out.dart';
 import '../models/cancel_order_request.dart';
 import '../models/cancelled_order_out.dart';
 import '../models/modification_quote_out.dart';
@@ -12,14 +14,66 @@ import '../models/modified_order_out.dart';
 import '../models/modify_order_request.dart';
 import '../models/order_detail_out.dart';
 import '../models/order_out.dart';
+import '../models/order_status.dart';
 import '../models/place_order_request.dart';
 import '../models/quote_request.dart';
+import '../models/utilisation_out.dart';
 
 part 'ordering_client.g.dart';
 
 @RestApi()
 abstract class OrderingClient {
   factory OrderingClient(Dio dio, {String? baseUrl}) = _OrderingClient;
+
+  /// List Day Orders.
+  ///
+  /// FR-45 / US-37: every order of a service date, filtered by state, slot and Student,.
+  /// ordered by slot time and then by when it was placed.
+  ///
+  /// [date] - Defaults to the current service date.
+  ///
+  /// [status] - Repeat for several states.
+  ///
+  /// [student] - Part of the Student's name or email.
+  @GET('/api/v1/admin/orders')
+  Future<List<AdminOrderOut>> listDayOrders({
+    @Query('limit') int? limit = 1000,
+    @Query('date') DateTime? date,
+    @Query('status') List<OrderStatus>? status,
+    @Query('slot_id') String? slotId,
+    @Query('student') String? student,
+  });
+
+  /// Admin Cancel Order.
+  ///
+  /// FR-38: cancel an ACCEPTED, PREPARING or READY order with a mandatory reason and a.
+  /// 100 % refund. The seat is always released; portions only from ACCEPTED (T6, T7, T9).
+  ///
+  /// `version` is the order version the Administrator saw. A repeat with the same key.
+  /// returns the same result; there is never a second refund.
+  @POST('/api/v1/admin/orders/{order_id}/cancel')
+  Future<CancelledOrderOut> adminCancelOrder({
+    @Path('order_id') required String orderId,
+    @Header('Idempotency-Key') required String idempotencyKey,
+    @Body() required AdminCancelOrderRequest body,
+  });
+
+  /// Get Utilisation.
+  ///
+  /// FR-46 / US-37: booked/capacity per slot, allocated/total/available per item and.
+  /// orders per state. The dashboard polls this every P-POLL (at most 30 s).
+  ///
+  /// [date] - Defaults to the current service date.
+  @GET('/api/v1/admin/utilisation')
+  Future<UtilisationOut> getUtilisation({@Query('date') DateTime? date});
+
+  /// List My Orders.
+  ///
+  /// FR-28: the caller's own orders, newest first, each with its latest price.
+  ///
+  /// Open one with GET /orders/{order_id} for every snapshot version and refund.
+  @GET('/api/v1/orders')
+  Future<List<OrderOut>> listMyOrders({@Query('limit') int? limit = 50});
 
   /// Place Order.
   ///
@@ -35,7 +89,8 @@ abstract class OrderingClient {
 
   /// Get Order.
   ///
-  /// FR-40: the order's current status and every transition so far, oldest first.
+  /// FR-40, FR-28: the order's current status and every transition, price snapshot.
+  /// version and refund so far, oldest first.
   ///
   /// The client polls this every P-POLL while the order is not finished. Another.
   /// Student's order answers 404 and is logged as a security event (FR-7).

@@ -15,6 +15,12 @@ from app.core.security import (
 )
 from app.models.enums import Role
 from app.models.identity import User
+from app.modules.audit.service import write_audit
+from app.modules.identity.rate_limit import (
+    RateLimiter,
+    login_account_subject,
+    login_ip_subject,
+)
 from app.modules.identity.repository import RefreshTokenRepository, UserRepository
 from app.modules.identity.schemas import LoginRequest, RegisterRequest, TokenPair
 
@@ -69,8 +75,51 @@ class IdentityService:
             )
             return True
 
-    def login(self, request: LoginRequest) -> TokenPair:
-        """FR-4. Unknown email, wrong password and deactivated account all fail the same way."""
+    def login(self, request: LoginRequest, client_ip: str) -> TokenPair:
+        """FR-4. Unknown email, wrong password and deactivated account all fail the same way.
+
+        Failures are limited per account and per client IP (NFR-21); past the limit the
+        password is not even checked and RateLimitExceededError is raised.
+        """
+        limiter = RateLimiter(self.session)
+        attempt = limiter.take(
+            [login_account_subject(request.email), login_ip_subject(client_ip)],
+            cap=get_settings().login_failure_limit,
+        )
+        # A failure (or an error) keeps its place; only failures are meant to count, so a
+        # successful login hands its place back.
+        try:
+            pair = self._check_credentials(request)
+        except InvalidCredentialsError:
+            self._audit_failed_login(request.email, client_ip)
+            raise
+        limiter.give_back(attempt)
+        return pair
+
+    def _audit_failed_login(self, email: str, client_ip: str) -> None:
+        """FR-47: a failed login is a security event.
+
+        Only credential failures are recorded, never a login refused by the limit:
+        NFR-21 already caps failures at P-LOGIN_FAILURES a minute per account and per
+        address, while refused attempts are unbounded and would let anyone grow the
+        append-only audit log. An unknown email is recorded by its hash, as in the
+        rate-limit table, so the log holds no address that is not an account.
+        """
+        with self.session.begin():
+            user = self.users.get_by_email(email)
+            write_audit(
+                self.session,
+                action="LOGIN_FAILED",
+                entity_type="user" if user is not None else "security",
+                entity_id=str(user.id) if user is not None else None,
+                after={
+                    "client_ip": client_ip,
+                    "account": "existing" if user is not None else "unknown",
+                    "account_subject": login_account_subject(email),
+                },
+            )
+
+    def _check_credentials(self, request: LoginRequest) -> TokenPair:
         with self.session.begin():
             user = self.users.get_by_email(request.email)
             if user is None:

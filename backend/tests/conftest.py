@@ -30,6 +30,9 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 
 # A full-length signing key, so tests exercise JWTs as configured in production.
 os.environ.setdefault("CAF_JWT_SECRET", "test-secret-" + "x" * 32)
+# Importing app.main above already built the app and cached the settings with the
+# default key; drop them so every test reads the key set here.
+get_settings.cache_clear()
 
 # Colima (macOS) exposes Docker on a per-user socket; point testcontainers at it.
 _colima_socket = Path.home() / ".colima" / "default" / "docker.sock"
@@ -125,6 +128,9 @@ def live_stack(database_url: str) -> Iterator[LiveStack]:
         "CAF_MOCKPAY_URL": stack.mockpay_url,
         # The secret this process signs test tokens with, whatever the environment says.
         "CAF_JWT_SECRET": get_settings().jwt_secret,
+        # The mixed-workload test drives each Student far past NFR-21's order limit on
+        # purpose; test_rate_limits.py checks the limits themselves.
+        "CAF_ORDER_REQUEST_LIMIT": "1000000",
     }
     processes: list[subprocess.Popen[bytes]] = []
     try:
@@ -157,9 +163,10 @@ def db_client(engine: Engine) -> Iterator[TestClient]:
     from sqlalchemy import text
     from sqlalchemy.orm import Session, sessionmaker
 
-    from app.db.session import get_session
+    from app.db.session import get_session, run_as_app_role
 
-    factory = sessionmaker(bind=engine, expire_on_commit=False)
+    # As in production: the app's transactions run as caf_app (NFR-26).
+    factory = run_as_app_role(sessionmaker(bind=engine, expire_on_commit=False))
 
     def override_get_session() -> Iterator[Session]:
         with factory() as session:
@@ -171,6 +178,8 @@ def db_client(engine: Engine) -> Iterator[TestClient]:
     with engine.begin() as connection:
         # Every business table hangs off one of these; settings keep their seeded defaults.
         connection.execute(text("TRUNCATE users, menu_items, service_days, discount_rules CASCADE"))
+        # Requests all come from one test client address, so counters must not carry over.
+        connection.execute(text("TRUNCATE rate_limits"))
 
 
 @pytest.fixture

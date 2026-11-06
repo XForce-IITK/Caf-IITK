@@ -215,9 +215,8 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('a new student registers and lands on the Student dashboard', (
-      tester,
-    ) async {
+    testWidgets('TC-US01-AC1 client side: a new student registers and lands '
+        'on the Student dashboard', (tester) async {
       final server = FakeServer((r) {
         if (r.path == registerUrl) {
           return const Reply(201, {
@@ -243,8 +242,8 @@ void main() {
       expect(_location(container), '/student');
     });
 
-    testWidgets('an address outside IITK and a short password are refused '
-        'before any request', (tester) async {
+    testWidgets('TC-US01-AC3 client side: an address outside IITK and a '
+        'short password are refused before any request', (tester) async {
       final server = _serverFor('STUDENT');
       await _start(tester, server);
       await open(tester);
@@ -266,9 +265,8 @@ void main() {
       expect(find.text('Enter a valid email address'), findsOneWidget);
     });
 
-    testWidgets('an email that is already registered is reported', (
-      tester,
-    ) async {
+    testWidgets('TC-US01-AC2 client side: an email that is already '
+        'registered is reported', (tester) async {
       final server = FakeServer(
         (_) => const Reply(409, {'detail': 'Email already registered'}),
       );

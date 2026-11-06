@@ -1,11 +1,12 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import OrderStatus, PaymentStatus, Role
-from app.models.ordering import Order, OrderTransition, PriceSnapshot
+from app.core.text import NoNul
+from app.models.enums import OrderStatus, PaymentCause, PaymentStatus, Role
+from app.models.ordering import Order, OrderTransition, Payment, PriceSnapshot
 from app.modules.pricing.schemas import QuoteOut, QuoteRequest
 
 
@@ -40,17 +41,58 @@ class TransitionOut(BaseModel):
     reason: str | None
 
 
+class SnapshotOut(BaseModel):
+    """One immutable price snapshot version (FR-27)."""
+
+    version: int
+    priced_at: datetime
+    price: QuoteOut
+
+
+class OrderRefundOut(BaseModel):
+    amount_paise: int
+    # CANCEL, or MODIFY when a cheaper change was refunded the difference.
+    cause: PaymentCause
+    # PENDING until mockpay acknowledges it; the outbox retries it (FR-39).
+    status: PaymentStatus
+    at: datetime
+
+
 class OrderDetailOut(OrderOut):
-    """FR-40: the order and every state change so far, oldest first."""
+    """FR-40 and FR-28: the order, every state change so far, every price snapshot
+    version and every refund, each oldest first."""
 
     history: list[TransitionOut]
+    snapshots: list[SnapshotOut]
+    refunds: list[OrderRefundOut]
 
     @classmethod
     def from_history(
-        cls, order: Order, snapshot: PriceSnapshot, transitions: list[OrderTransition]
+        cls,
+        order: Order,
+        snapshots: list[PriceSnapshot],
+        transitions: list[OrderTransition],
+        refunds: list[Payment],
     ) -> "OrderDetailOut":
         return cls(
-            **_order_fields(order, snapshot),
+            **_order_fields(order, snapshots[-1]),
+            snapshots=[
+                SnapshotOut(
+                    version=row.version,
+                    priced_at=row.priced_at,
+                    price=QuoteOut.model_validate(row.breakdown),
+                )
+                for row in snapshots
+            ],
+            refunds=[
+                OrderRefundOut(
+                    amount_paise=row.amount_paise,
+                    cause=row.cause,
+                    status=row.status,
+                    at=row.created_at,
+                )
+                for row in refunds
+            ],
             history=[
                 TransitionOut(
                     from_status=row.from_status,
@@ -80,7 +122,15 @@ def _order_fields(order: Order, snapshot: PriceSnapshot) -> dict[str, object]:
 class CancelOrderRequest(BaseModel):
     """The order version the Student saw when confirming (NFR-5)."""
 
+    model_config = ConfigDict(extra="forbid")
+
     version: Annotated[int, Field(ge=1)]
+
+
+class AdminCancelOrderRequest(CancelOrderRequest):
+    """FR-38: the Administrator must say why; whitespace alone is no reason."""
+
+    reason: Annotated[str, Field(min_length=1, max_length=500, pattern=r"\S"), NoNul]
 
 
 class RefundOut(BaseModel):
@@ -113,3 +163,40 @@ class ModifiedOrderOut(OrderOut):
     difference_paise: int
     # Present when the modification lowered the price (FR-39).
     refund: RefundOut | None
+
+
+class AdminOrderOut(OrderOut):
+    """FR-45: an order as the Administrator sees it, with who placed it and when it is due."""
+
+    student_id: uuid.UUID
+    student_name: str
+    student_email: str
+    slot_starts_at: datetime
+
+
+class SlotUtilisationOut(BaseModel):
+    slot_id: uuid.UUID
+    starts_at: datetime
+    ends_at: datetime
+    booked: int
+    capacity: int
+
+
+class ItemUtilisationOut(BaseModel):
+    item_id: uuid.UUID
+    name: str
+    allocated: int
+    total: int
+    available: int
+
+
+class UtilisationOut(BaseModel):
+    """FR-46: how full each slot and item is on a service date, and orders per state."""
+
+    service_date: date
+    # When these figures were read; the dashboard refreshes them every P-POLL.
+    as_of: datetime
+    slots: list[SlotUtilisationOut]
+    items: list[ItemUtilisationOut]
+    # Every order state, with 0 for states no order is in.
+    order_counts: dict[OrderStatus, int]

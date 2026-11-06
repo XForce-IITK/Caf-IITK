@@ -18,6 +18,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
+from app.core.metrics import counts_order_outcome
 from app.models.capacity import Slot
 from app.models.enums import (
     ModificationStatus,
@@ -123,6 +124,7 @@ class ModifyService(OrderService):
             self._deny(actor_id, actor_role, order_id, "quote_modification")
             raise
 
+    @counts_order_outcome("modify")
     def modify(
         self,
         student: User,
@@ -323,11 +325,18 @@ class ModifyService(OrderService):
             outcome = APPLIED
         else:
             if modification.status is ModificationStatus.HOLDING:
-                self._release(modification, change, student)
+                self._release(
+                    modification,
+                    change,
+                    {"actor_id": str(student.id), "actor_role": student.role.value},
+                )
             # A cancel or the hold sweeper got there first: the charge is not kept.
             outcome = result.outcome.value if not approved else "SUPERSEDED"
-            # A timed-out authorisation may still have landed, so it is voided too.
-            if result.outcome is not AuthOutcome.DECLINED:
+            # A timed-out authorisation may still have landed, so it is voided too,
+            # unless the hold sweeper already queued the void.
+            if result.outcome is not AuthOutcome.DECLINED and not self.repo.has_void(
+                change.order_id, change.modification_id
+            ):
                 self.repo.add(
                     Payment(
                         id=uuid.uuid4(),
@@ -417,22 +426,41 @@ class ModifyService(OrderService):
         )
         return self._record_refund(refund, student)
 
-    def _release(self, modification: OrderModification, change: _Change, student: User) -> None:
+    def _release(
+        self, modification: OrderModification, change: _Change, actor: dict[str, str]
+    ) -> None:
         """Give back what step 1 took; the order keeps its old cart and slot (FR-36)."""
-        actor = {"actor_id": str(student.id), "actor_role": student.role.value}
-        taken = [item_id for item_id, delta in change.deltas.items() if delta > 0]
+        self._release_taken(
+            modification,
+            change.order_id,
+            change.service_date,
+            change.deltas,
+            change.new_slot_id if change.moves_slot else None,
+            actor,
+        )
+
+    def _release_taken(
+        self,
+        modification: OrderModification,
+        order_id: uuid.UUID,
+        service_date: date,
+        deltas: dict[uuid.UUID, int],
+        new_slot_id: uuid.UUID | None,
+        actor: dict[str, str],
+    ) -> None:
+        """Return the extra portions and the new seat a hold took, and mark it RELEASED.
+
+        The caller holds the order lock; inventory then the slot are locked here (NFR-4).
+        """
+        taken = [item_id for item_id, delta in deltas.items() if delta > 0]
         if taken:
-            stock = self.repo.lock_inventory(taken, change.service_date)
+            stock = self.repo.lock_inventory(taken, service_date)
             for item_id in taken:
                 self._change_allocated(
-                    stock[item_id],
-                    -change.deltas[item_id],
-                    "PORTIONS_RELEASED",
-                    change.order_id,
-                    **actor,
+                    stock[item_id], -deltas[item_id], "PORTIONS_RELEASED", order_id, **actor
                 )
-        if change.moves_slot:
-            self._change_seat(self.repo.lock_slot(change.new_slot_id), -1, change.order_id, actor)
+        if new_slot_id is not None:
+            self._change_seat(self.repo.lock_slot(new_slot_id), -1, order_id, actor)
         modification.status = ModificationStatus.RELEASED
 
     def _lock_slots(self, old_slot: Slot, new_slot: Slot) -> dict[uuid.UUID, Slot]:

@@ -20,6 +20,12 @@ class Settings(BaseSettings):
 
     env: Literal["development", "test", "production"] = "development"
     database_url: str = "postgresql+psycopg://caf:caf@localhost:5432/caf"
+    # Connections each process may hold (app/db/session.py), with no overflow. Every
+    # caf-api worker process and caf-worker has its own pool, so processes x this must
+    # stay under the database's max_connections. 5 measured best of 5, 10 and 20 for
+    # the order rush (Performance-Report.md section 3): fewer threads busy at once
+    # means less waiting for the GIL, so the hot inventory row is held for less time.
+    db_pool_size: int = 5
     jwt_secret: str = DEFAULT_JWT_SECRET
     mockpay_url: str = "http://localhost:8001"
     # How long mockpay holds an authorisation in "timeout" mode; keep above pay_timeout_s.
@@ -37,6 +43,11 @@ class Settings(BaseSettings):
     idem_ttl_h: int = 24
     access_ttl_min: int = 15
     refresh_ttl_days: int = 7
+
+    # NFR-21, per minute: failed logins per account and per client IP, and order
+    # create/modify/cancel requests per Student.
+    login_failure_limit: int = 5
+    order_request_limit: int = 10
 
     # LLM for the Kitchen Planning Agent (OpenAI). Without a key every run uses the
     # heuristic planner (FR-59). The key is a SecretStr, so it never appears in a repr.

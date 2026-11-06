@@ -1,3 +1,5 @@
+import '../api/api.dart';
+
 /// Money is integer paise throughout; this is the only place it becomes text.
 String formatPaise(int paise) {
   final sign = paise < 0 ? '−' : '';
@@ -19,6 +21,27 @@ String formatIstTime(DateTime moment) {
   return '${two(ist.hour)}:${two(ist.minute)}';
 }
 
+const _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// The IST calendar date, e.g. "6 Oct".
+String formatIstDate(DateTime moment) {
+  final ist = moment.toUtc().add(_istOffset);
+  return '${ist.day} ${_months[ist.month - 1]}';
+}
+
 String formatSlot(DateTime startsAt, DateTime endsAt) {
   return '${formatIstTime(startsAt)} – ${formatIstTime(endsAt)}';
 }
@@ -28,3 +51,11 @@ DateTime istToday([DateTime? now]) {
   final ist = (now ?? DateTime.now()).toUtc().add(_istOffset);
   return DateTime(ist.year, ist.month, ist.day);
 }
+
+String categoryLabel(ItemCategory category) => switch (category) {
+  ItemCategory.meal => 'Meal',
+  ItemCategory.snack => 'Snack',
+  ItemCategory.beverage => 'Beverage',
+  ItemCategory.dessert => 'Dessert',
+  ItemCategory.$unknown => 'Other',
+};

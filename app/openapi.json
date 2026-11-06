@@ -1,6 +1,135 @@
 {
   "components": {
     "schemas": {
+      "AccountOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "role",
+          "is_active"
+        ],
+        "title": "AccountOut",
+        "type": "object"
+      },
+      "AdminCancelOrderRequest": {
+        "additionalProperties": false,
+        "description": "FR-38: the Administrator must say why; whitespace alone is no reason.",
+        "properties": {
+          "reason": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "\\S",
+            "title": "Reason",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "reason"
+        ],
+        "title": "AdminCancelOrderRequest",
+        "type": "object"
+      },
+      "AdminOrderOut": {
+        "description": "FR-45: an order as the Administrator sees it, with who placed it and when it is due.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "paid_paise": {
+            "title": "Paid Paise",
+            "type": "integer"
+          },
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "slot_starts_at": {
+            "format": "date-time",
+            "title": "Slot Starts At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus"
+          },
+          "student_email": {
+            "title": "Student Email",
+            "type": "string"
+          },
+          "student_id": {
+            "format": "uuid",
+            "title": "Student Id",
+            "type": "string"
+          },
+          "student_name": {
+            "title": "Student Name",
+            "type": "string"
+          },
+          "subsidy_applied": {
+            "title": "Subsidy Applied",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "slot_id",
+          "version",
+          "paid_paise",
+          "subsidy_applied",
+          "price",
+          "created_at",
+          "student_id",
+          "student_name",
+          "student_email",
+          "slot_starts_at"
+        ],
+        "title": "AdminOrderOut",
+        "type": "object"
+      },
       "AgentRunDetailOut": {
         "description": "FR-63: the run, its report (FR-52), its proposals and its tool-call log (FR-62).",
         "properties": {
@@ -162,7 +291,140 @@
         "title": "AgentTrigger",
         "type": "string"
       },
+      "AuditEntryOut": {
+        "description": "One audit entry (FR-47), with any secret-looking value redacted (FR-49).",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Role"
+          },
+          "after": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "at",
+          "actor_id",
+          "actor_role",
+          "action",
+          "entity_type",
+          "entity_id",
+          "before",
+          "after",
+          "correlation_id"
+        ],
+        "title": "AuditEntryOut",
+        "type": "object"
+      },
+      "AuditPageOut": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/AuditEntryOut"
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "next_before_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before Id"
+          }
+        },
+        "required": [
+          "entries",
+          "next_before_id"
+        ],
+        "title": "AuditPageOut",
+        "type": "object"
+      },
       "CancelOrderRequest": {
+        "additionalProperties": false,
         "description": "The order version the Student saw when confirming (NFR-5).",
         "properties": {
           "version": {
@@ -228,6 +490,265 @@
           "refund"
         ],
         "title": "CancelledOrderOut",
+        "type": "object"
+      },
+      "DiscountRuleCreate": {
+        "additionalProperties": false,
+        "description": "FR-22. A slot is discounted when its start is in [start_time, end_time).\n\n`category` is required for a CATEGORY rule and `item_ids` for an ITEMS rule;\neach is refused for any other scope.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_time": {
+            "format": "time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "item_ids": {
+            "default": [],
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "pct": {
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Pct",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DiscountScope"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "start_time",
+          "end_time",
+          "pct",
+          "scope"
+        ],
+        "title": "DiscountRuleCreate",
+        "type": "object"
+      },
+      "DiscountRuleOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "end_time": {
+            "format": "time",
+            "title": "End Time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "item_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Item Ids",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pct": {
+            "title": "Pct",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DiscountScope"
+          },
+          "start_time": {
+            "format": "time",
+            "title": "Start Time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "start_time",
+          "end_time",
+          "pct",
+          "scope",
+          "category",
+          "item_ids",
+          "active",
+          "created_at"
+        ],
+        "title": "DiscountRuleOut",
+        "type": "object"
+      },
+      "DiscountRuleUpdate": {
+        "additionalProperties": false,
+        "description": "FR-22: change any of a rule's fields, or deactivate (and reactivate) it.\n\nChanging `scope` clears `category` and `item_ids` unless they are given too.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 30,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Item Ids"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pct": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pct"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscountScope"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          }
+        },
+        "title": "DiscountRuleUpdate",
+        "type": "object"
+      },
+      "DiscountScope": {
+        "enum": [
+          "ALL",
+          "CATEGORY",
+          "ITEMS"
+        ],
+        "title": "DiscountScope",
+        "type": "string"
+      },
+      "EligibilityUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eligible"
+        ],
+        "title": "EligibilityUpdate",
         "type": "object"
       },
       "FlagRequest": {
@@ -414,6 +935,83 @@
         ],
         "title": "ItemStatus",
         "type": "string"
+      },
+      "ItemUpdate": {
+        "additionalProperties": false,
+        "description": "FR-9: the fields the Administrator may edit; the name is fixed once onboarded.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ItemCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "price_paise": {
+            "anyOf": [
+              {
+                "maximum": 50000.0,
+                "minimum": 100.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Paise"
+          }
+        },
+        "title": "ItemUpdate",
+        "type": "object"
+      },
+      "ItemUtilisationOut": {
+        "properties": {
+          "allocated": {
+            "title": "Allocated",
+            "type": "integer"
+          },
+          "available": {
+            "title": "Available",
+            "type": "integer"
+          },
+          "item_id": {
+            "format": "uuid",
+            "title": "Item Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "item_id",
+          "name",
+          "allocated",
+          "total",
+          "available"
+        ],
+        "title": "ItemUtilisationOut",
+        "type": "object"
       },
       "KitchenAction": {
         "description": "The kitchen's buttons (FR-43) and the transitions of Table 4.6-A they ask for.",
@@ -723,7 +1321,7 @@
         "type": "string"
       },
       "OrderDetailOut": {
-        "description": "FR-40: the order and every state change so far, oldest first.",
+        "description": "FR-40 and FR-28: the order, every state change so far, every price snapshot\nversion and every refund, each oldest first.",
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -749,10 +1347,24 @@
           "price": {
             "$ref": "#/components/schemas/QuoteOut"
           },
+          "refunds": {
+            "items": {
+              "$ref": "#/components/schemas/OrderRefundOut"
+            },
+            "title": "Refunds",
+            "type": "array"
+          },
           "slot_id": {
             "format": "uuid",
             "title": "Slot Id",
             "type": "string"
+          },
+          "snapshots": {
+            "items": {
+              "$ref": "#/components/schemas/SnapshotOut"
+            },
+            "title": "Snapshots",
+            "type": "array"
           },
           "status": {
             "$ref": "#/components/schemas/OrderStatus"
@@ -775,7 +1387,9 @@
           "subsidy_applied",
           "price",
           "created_at",
-          "history"
+          "history",
+          "snapshots",
+          "refunds"
         ],
         "title": "OrderDetailOut",
         "type": "object"
@@ -829,6 +1443,33 @@
         "title": "OrderOut",
         "type": "object"
       },
+      "OrderRefundOut": {
+        "properties": {
+          "amount_paise": {
+            "title": "Amount Paise",
+            "type": "integer"
+          },
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "cause": {
+            "$ref": "#/components/schemas/PaymentCause"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          }
+        },
+        "required": [
+          "amount_paise",
+          "cause",
+          "status",
+          "at"
+        ],
+        "title": "OrderRefundOut",
+        "type": "object"
+      },
       "OrderStatus": {
         "description": "States of Table 4.6-A in the SRS.",
         "enum": [
@@ -842,6 +1483,16 @@
           "PAYMENT_FAILED"
         ],
         "title": "OrderStatus",
+        "type": "string"
+      },
+      "PaymentCause": {
+        "enum": [
+          "CREATE",
+          "MODIFY",
+          "CANCEL",
+          "EXPIRY"
+        ],
+        "title": "PaymentCause",
         "type": "string"
       },
       "PaymentStatus": {
@@ -1356,6 +2007,7 @@
         "type": "object"
       },
       "RejectRequest": {
+        "additionalProperties": false,
         "properties": {
           "reason": {
             "maxLength": 300,
@@ -1512,6 +2164,23 @@
         "title": "SlotAvailabilityOut",
         "type": "object"
       },
+      "SlotCapacityChange": {
+        "additionalProperties": false,
+        "description": "FR-18: one slot's new seat capacity, within the same bounds as the default.",
+        "properties": {
+          "capacity": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Capacity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capacity"
+        ],
+        "title": "SlotCapacityChange",
+        "type": "object"
+      },
       "SlotListOut": {
         "properties": {
           "service_date": {
@@ -1627,6 +2296,158 @@
           "proposal_id"
         ],
         "title": "SlotQueueOut",
+        "type": "object"
+      },
+      "SlotUtilisationOut": {
+        "properties": {
+          "booked": {
+            "title": "Booked",
+            "type": "integer"
+          },
+          "capacity": {
+            "title": "Capacity",
+            "type": "integer"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slot_id",
+          "starts_at",
+          "ends_at",
+          "booked",
+          "capacity"
+        ],
+        "title": "SlotUtilisationOut",
+        "type": "object"
+      },
+      "SnapshotOut": {
+        "description": "One immutable price snapshot version (FR-27).",
+        "properties": {
+          "price": {
+            "$ref": "#/components/schemas/QuoteOut"
+          },
+          "priced_at": {
+            "format": "date-time",
+            "title": "Priced At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "priced_at",
+          "price"
+        ],
+        "title": "SnapshotOut",
+        "type": "object"
+      },
+      "StaffCreate": {
+        "additionalProperties": false,
+        "description": "FR-2: a Kitchen Staff or Administrator account, created by an Administrator.",
+        "properties": {
+          "email": {
+            "maxLength": 254,
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password",
+          "role"
+        ],
+        "title": "StaffCreate",
+        "type": "object"
+      },
+      "StudentOut": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "subsidy_eligible": {
+            "title": "Subsidy Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "is_active",
+          "subsidy_eligible"
+        ],
+        "title": "StudentOut",
+        "type": "object"
+      },
+      "SubsidySettings": {
+        "additionalProperties": false,
+        "description": "FR-23: P-SUBSIDY_AMT and P-SUBSIDY_CAP_PCT.\n\nAn eligible Student's first subsidised order of a day gets\nmin(amount_paise, cap_pct % of the discounted subtotal) off (FR-24 step 4).",
+        "properties": {
+          "amount_paise": {
+            "maximum": 50000.0,
+            "minimum": 0.0,
+            "title": "Amount Paise",
+            "type": "integer"
+          },
+          "cap_pct": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Cap Pct",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount_paise",
+          "cap_pct"
+        ],
+        "title": "SubsidySettings",
         "type": "object"
       },
       "TokenPair": {
@@ -1816,6 +2637,54 @@
         "title": "UserOut",
         "type": "object"
       },
+      "UtilisationOut": {
+        "description": "FR-46: how full each slot and item is on a service date, and orders per state.",
+        "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ItemUtilisationOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "order_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/OrderStatus"
+            },
+            "title": "Order Counts",
+            "type": "object"
+          },
+          "service_date": {
+            "format": "date",
+            "title": "Service Date",
+            "type": "string"
+          },
+          "slots": {
+            "items": {
+              "$ref": "#/components/schemas/SlotUtilisationOut"
+            },
+            "title": "Slots",
+            "type": "array"
+          }
+        },
+        "required": [
+          "service_date",
+          "as_of",
+          "slots",
+          "items",
+          "order_counts"
+        ],
+        "title": "UtilisationOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -1984,6 +2853,318 @@
         ]
       }
     },
+    "/api/v1/admin/audit": {
+      "get": {
+        "description": "FR-49 / US-38: search the append-only audit log by time range, actor, entity\nand action, newest first, a page at a time. Secrets never appear in results.",
+        "operationId": "search_audit",
+        "parameters": [
+          {
+            "description": "Inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Inclusive.",
+              "title": "From"
+            }
+          },
+          {
+            "description": "Exclusive.",
+            "in": "query",
+            "name": "to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exclusive.",
+              "title": "To"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actor_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "description": "Also matches entries that name this ID as their order.",
+            "in": "query",
+            "name": "entity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Also matches entries that name this ID as their order.",
+              "title": "Entity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "description": "next_before_id of the previous page.",
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "next_before_id of the previous page.",
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator searches the audit log"
+          },
+          "422": {
+            "description": "Invalid filter, or `from` is not before `to`"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Search Audit",
+        "tags": [
+          "audit"
+        ]
+      }
+    },
+    "/api/v1/admin/discount-rules": {
+      "get": {
+        "description": "FR-22: every discount rule, active or not, by start time.",
+        "operationId": "list_discount_rules",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DiscountRuleOut"
+                  },
+                  "title": "Response List Discount Rules",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Discount Rules",
+        "tags": [
+          "pricing"
+        ]
+      },
+      "post": {
+        "description": "FR-22 / US-17: add a time-of-day discount; it is active immediately.\n\nIt applies to slots starting in [start_time, end_time). Rules may overlap; a\nline gets only the highest percentage among the rules that cover it (FR-24).",
+        "operationId": "create_discount_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          },
+          "422": {
+            "description": "Invalid input: percentage outside 1-50, an empty time range, a scope without its category or items, or an unknown item"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Discount Rule",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/discount-rules/{rule_id}": {
+      "patch": {
+        "description": "FR-22: edit a rule, or deactivate it with `active: false`.\n\nOrders already placed keep their price snapshots; only later quotes see the change.",
+        "operationId": "update_discount_rule",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rule_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Rule Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscountRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscountRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages discount rules"
+          },
+          "404": {
+            "description": "No such discount rule"
+          },
+          "422": {
+            "description": "Invalid input, an unknown field, or no field to change"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Discount Rule",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
     "/api/v1/admin/inventory/{service_date}/{item_id}": {
       "put": {
         "description": "FR-14 / US-11: set the prepared portions of an item for a service date (0-500).",
@@ -2102,6 +3283,331 @@
         "summary": "Onboard Item",
         "tags": [
           "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/items/{item_id}": {
+      "delete": {
+        "description": "FR-10 / US-08: withdraw a dish; it is set to REMOVED, never deleted.\n\nIt leaves the menu and new orders for it get 409; orders already placed proceed.",
+        "operationId": "remove_item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator removes items"
+          },
+          "404": {
+            "description": "No such menu item"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Remove Item",
+        "tags": [
+          "catalogue"
+        ]
+      },
+      "patch": {
+        "description": "FR-9 / US-07: change an item's description, category or price.\n\nOrders already placed keep their price snapshots; only later quotes use the new price.",
+        "operationId": "edit_item",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator edits items"
+          },
+          "404": {
+            "description": "No such menu item"
+          },
+          "409": {
+            "description": "The item is not ACTIVE"
+          },
+          "422": {
+            "description": "Invalid input, an unknown field, or no field to change"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit Item",
+        "tags": [
+          "catalogue"
+        ]
+      }
+    },
+    "/api/v1/admin/orders": {
+      "get": {
+        "description": "FR-45 / US-37: every order of a service date, filtered by state, slot and Student,\nordered by slot time and then by when it was placed.",
+        "operationId": "list_day_orders",
+        "parameters": [
+          {
+            "description": "Defaults to the current service date.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Defaults to the current service date.",
+              "title": "Date"
+            }
+          },
+          {
+            "description": "Repeat for several states.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderStatus"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Repeat for several states.",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "slot_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slot Id"
+            }
+          },
+          {
+            "description": "Part of the Student's name or email.",
+            "in": "query",
+            "name": "student",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Part of the Student's name or email.",
+              "title": "Student"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 1000,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminOrderOut"
+                  },
+                  "title": "Response List Day Orders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Day Orders",
+        "tags": [
+          "ordering"
+        ]
+      }
+    },
+    "/api/v1/admin/orders/{order_id}/cancel": {
+      "post": {
+        "description": "FR-38: cancel an ACCEPTED, PREPARING or READY order with a mandatory reason and a\n100 % refund. The seat is always released; portions only from ACCEPTED (T6, T7, T9).\n\n`version` is the order version the Administrator saw. A repeat with the same key\nreturns the same result; there is never a second refund.",
+        "operationId": "admin_cancel_order",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminCancelOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelledOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator cancels any order"
+          },
+          "404": {
+            "description": "No such order"
+          },
+          "409": {
+            "description": "The order is PENDING_PAYMENT or terminal, the version is stale (current status, version and refund in the body), or the original request with this key is still in progress"
+          },
+          "422": {
+            "description": "No reason given, or the idempotency key was already used with a different request"
+          },
+          "503": {
+            "description": "Could not complete after retries; nothing was changed"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Admin Cancel Order",
+        "tags": [
+          "ordering"
         ]
       }
     },
@@ -2294,7 +3800,7 @@
     },
     "/api/v1/admin/service-days/{service_date}": {
       "put": {
-        "description": "FR-17 / US-14: configure a service date's window and generate its slots.",
+        "description": "FR-17 / US-14: configure a service date's window and generate its slots.\n\nSlots that orders reference are kept; FR-18 refuses a change that would remove one.",
         "operationId": "configure_service_day",
         "parameters": [
           {
@@ -2333,7 +3839,7 @@
             "description": "Only the Administrator configures service windows"
           },
           "409": {
-            "description": "Orders already reference this day's slots"
+            "description": "A slot with orders would be removed, or its capacity would fall below its booked seats"
           },
           "422": {
             "description": "Invalid window, capacity, or a slot length that does not divide it"
@@ -2347,6 +3853,553 @@
         "summary": "Configure Service Day",
         "tags": [
           "slots"
+        ]
+      }
+    },
+    "/api/v1/admin/slots/{slot_id}": {
+      "patch": {
+        "description": "FR-18 / US-15: change one slot's capacity without dropping booked students.",
+        "operationId": "change_slot_capacity",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slot_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Slot Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SlotCapacityChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator changes slot capacity"
+          },
+          "404": {
+            "description": "No such slot"
+          },
+          "409": {
+            "description": "The capacity is below the seats already booked"
+          },
+          "422": {
+            "description": "Capacity outside 1-100, or an unknown field"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Change Slot Capacity",
+        "tags": [
+          "slots"
+        ]
+      }
+    },
+    "/api/v1/admin/students": {
+      "get": {
+        "description": "FR-23: Students by name, to find the one to mark eligible.\n\n`search` matches part of the name or email, ignoring case; `eligible`\nkeeps only Students who are (or are not) subsidy-eligible.",
+        "operationId": "list_students",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "eligible",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Eligible"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudentOut"
+                  },
+                  "title": "Response List Students",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Students",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/subsidy": {
+      "get": {
+        "description": "FR-23: the current P-SUBSIDY_AMT (in paise) and P-SUBSIDY_CAP_PCT.",
+        "operationId": "get_subsidy_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubsidySettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Subsidy Settings",
+        "tags": [
+          "pricing"
+        ]
+      },
+      "put": {
+        "description": "FR-23: set both subsidy parameters. An amount of 0 turns the subsidy off.\n\nOnly later quotes see the change; placed orders keep their price snapshots.",
+        "operationId": "set_subsidy_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubsidySettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubsidySettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          },
+          "422": {
+            "description": "Amount outside 0-50000 paise or cap outside 0-100 %"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Subsidy Settings",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/users": {
+      "get": {
+        "description": "UC-03: every Kitchen Staff and Administrator account, active or not, by name.",
+        "operationId": "list_staff_accounts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AccountOut"
+                  },
+                  "title": "Response List Staff Accounts",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Staff Accounts",
+        "tags": [
+          "identity"
+        ]
+      },
+      "post": {
+        "description": "FR-2: create a Kitchen Staff or Administrator account. Students register\nthemselves, so role STUDENT is refused with 422.",
+        "operationId": "create_staff_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator creates accounts"
+          },
+          "409": {
+            "description": "Email already registered"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Staff Account",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/deactivate": {
+      "post": {
+        "description": "FR-3: the account can no longer log in or refresh, and its access tokens are\nrefused at once. Deactivating an inactive account changes nothing.",
+        "operationId": "deactivate_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages accounts"
+          },
+          "404": {
+            "description": "No such account"
+          },
+          "409": {
+            "description": "Administrators cannot deactivate or reactivate their own account"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Deactivate Account",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/eligibility": {
+      "put": {
+        "description": "FR-23 / US-18: mark a Student subsidy-eligible, or not.\n\nTheir next quote includes the subsidy if they have no subsidised order that\nday yet (FR-24 step 4). Staff accounts are not Students, so they get 404.",
+        "operationId": "set_subsidy_eligibility",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EligibilityUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudentOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages the subsidy"
+          },
+          "404": {
+            "description": "No such Student"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Subsidy Eligibility",
+        "tags": [
+          "pricing"
+        ]
+      }
+    },
+    "/api/v1/admin/users/{user_id}/reactivate": {
+      "post": {
+        "description": "FR-3: the account can log in again; its old refresh tokens stay revoked.",
+        "operationId": "reactivate_account",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator manages accounts"
+          },
+          "404": {
+            "description": "No such account"
+          },
+          "409": {
+            "description": "Administrators cannot deactivate or reactivate their own account"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reactivate Account",
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/admin/utilisation": {
+      "get": {
+        "description": "FR-46 / US-37: booked/capacity per slot, allocated/total/available per item and\norders per state. The dashboard polls this every P-POLL (at most 30 s).",
+        "operationId": "get_utilisation",
+        "parameters": [
+          {
+            "description": "Defaults to the current service date.",
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Defaults to the current service date.",
+              "title": "Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UtilisationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only the Administrator"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Utilisation",
+        "tags": [
+          "ordering"
         ]
       }
     },
@@ -2386,6 +4439,9 @@
               }
             },
             "description": "Validation Error"
+          },
+          "429": {
+            "description": "Too many failed logins for this account or address (NFR-21)"
           }
         },
         "summary": "Login",
@@ -2831,6 +4887,62 @@
       }
     },
     "/api/v1/orders": {
+      "get": {
+        "description": "FR-28: the caller's own orders, newest first, each with its latest price.\n\nOpen one with GET /orders/{order_id} for every snapshot version and refund.",
+        "operationId": "list_my_orders",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OrderOut"
+                  },
+                  "title": "Response List My Orders",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "description": "Only Students have orders"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Orders",
+        "tags": [
+          "ordering"
+        ]
+      },
       "post": {
         "description": "FR-30, FR-33: reserve the portions and a seat, then take payment.\n\n201 with the order in ACCEPTED, or in PAYMENT_FAILED (holds returned) when the\npayment is declined or times out. A repeat with the same key returns the same order.",
         "operationId": "place_order",
@@ -2879,7 +4991,10 @@
             "description": "Ordering not open yet, an item or the slot is unavailable (named in the body), the price differs from the quote (fresh quote in the body), or the original request with this key is still in progress"
           },
           "422": {
-            "description": "Unknown item, quantity above P-MAX_QTY, or the idempotency key was already used with a different cart"
+            "description": "Unknown item, quantity above P-MAX_QTY, already P-MAX_ACTIVE unfinished orders on that date, or the idempotency key was already used with a different cart"
+          },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
           },
           "503": {
             "description": "Could not complete after retries; nothing was reserved"
@@ -2898,7 +5013,7 @@
     },
     "/api/v1/orders/{order_id}": {
       "get": {
-        "description": "FR-40: the order's current status and every transition so far, oldest first.\n\nThe client polls this every P-POLL while the order is not finished. Another\nStudent's order answers 404 and is logged as a security event (FR-7).",
+        "description": "FR-40, FR-28: the order's current status and every transition, price snapshot\nversion and refund so far, oldest first.\n\nThe client polls this every P-POLL while the order is not finished. Another\nStudent's order answers 404 and is logged as a security event (FR-7).",
         "operationId": "get_order",
         "parameters": [
           {
@@ -3013,6 +5128,9 @@
           "422": {
             "description": "Unknown item, quantity above P-MAX_QTY, a slot on another day, nothing to change, or the idempotency key was already used with a different request"
           },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
+          },
           "503": {
             "description": "Could not complete after retries; nothing was changed"
           }
@@ -3088,6 +5206,9 @@
           },
           "422": {
             "description": "The idempotency key was already used with a different request"
+          },
+          "429": {
+            "description": "Too many order requests this minute (NFR-21)"
           },
           "503": {
             "description": "Could not complete after retries; nothing was changed"

@@ -12,11 +12,12 @@ import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from sqlalchemy import select, text, update
+from sqlalchemy import Date, cast, func, literal_column, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.models.agent import AgentRun, Proposal
+from app.core import clock
+from app.models.agent import AgentLlmCall, AgentRun, Proposal
 from app.models.capacity import ServiceDay
 from app.models.enums import AgentRunStatus, AgentSource, AgentTrigger
 from app.models.platform import Setting
@@ -70,7 +71,11 @@ class RunRepository:
         return self.session.scalar(select(AgentRun.id).where(AgentRun.status.in_(ACTIVE)))
 
     def create(
-        self, trigger: AgentTrigger, requested_by: uuid.UUID | None, now: datetime
+        self,
+        trigger: AgentTrigger,
+        requested_by: uuid.UUID | None,
+        now: datetime,
+        correlation_id: str | None = None,
     ) -> AgentRun:
         """Queue a run; the partial unique index allows only one active run (FR-50).
 
@@ -82,6 +87,7 @@ class RunRepository:
             requested_by=requested_by,
             status=AgentRunStatus.QUEUED,
             started_at=now,
+            correlation_id=correlation_id,
         )
         try:
             with self.session.begin_nested():
@@ -155,6 +161,41 @@ class RunRepository:
 
     def get(self, run_id: uuid.UUID) -> AgentRun | None:
         return self.session.get(AgentRun, run_id)
+
+    def count_by_status_and_source(self) -> list[tuple[str, str | None, int]]:
+        """Every run ever made, for GET /metrics (NFR-31)."""
+        rows = self.session.execute(
+            select(AgentRun.status, AgentRun.source, func.count()).group_by(
+                AgentRun.status, AgentRun.source
+            )
+        )
+        return [(status.value, source.value if source else None, n) for status, source, n in rows]
+
+    def llm_usage_by_day(
+        self, start: datetime, end: datetime
+    ) -> list[tuple[date, str, str, int, int, int]]:
+        """LLM requests and tokens per IST day, model and outcome, for runs started in
+        [start, end): the spend report (NFR-42). A request is dated by its run.
+        """
+        ist_day = cast(
+            func.timezone(literal_column(f"'{clock.IST.key}'"), AgentRun.started_at), Date
+        ).label("ist_day")
+        rows = self.session.execute(
+            select(
+                ist_day,
+                AgentLlmCall.model,
+                AgentLlmCall.outcome,
+                func.count(),
+                func.coalesce(func.sum(AgentLlmCall.prompt_tokens), 0),
+                func.coalesce(func.sum(AgentLlmCall.completion_tokens), 0),
+            )
+            .join(AgentRun, AgentRun.id == AgentLlmCall.run_id)
+            .where(AgentRun.started_at >= start, AgentRun.started_at < end)
+            .group_by("ist_day", AgentLlmCall.model, AgentLlmCall.outcome)
+            .order_by("ist_day", AgentLlmCall.model, AgentLlmCall.outcome)
+        )
+        # coalesce() makes the token sums non-null.
+        return [(d, model, outcome, n, p or 0, c or 0) for d, model, outcome, n, p, c in rows]
 
     def recent(self, limit: int) -> list[AgentRun]:
         return list(

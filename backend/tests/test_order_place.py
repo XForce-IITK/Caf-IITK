@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time
 from typing import Annotated, Any, cast
 from zoneinfo import ZoneInfo
@@ -16,8 +17,9 @@ from app.core import clock
 from app.core.security import create_access_token
 from app.db.session import get_session
 from app.models.capacity import DailyInventory, ServiceDay, Slot
-from app.models.catalogue import MenuItem
+from app.models.catalogue import DiscountRule, MenuItem
 from app.models.enums import (
+    DiscountScope,
     ItemCategory,
     ItemStatus,
     OrderStatus,
@@ -454,6 +456,48 @@ def test_price_differing_from_the_quote_is_409_with_a_fresh_quote(
     assert gateway.authorised == []
 
 
+def test_tc_us20_ac1_price_changed_after_the_quote_is_409_with_a_fresh_quote(
+    api: TestClient, engine: Engine, menu: dict[str, Any], gateway: FakePaymentGateway
+) -> None:
+    # A 5 % discount on everything makes the Rs 80 Thali the AC's Rs 76 quote.
+    _add(
+        engine,
+        DiscountRule(
+            id=uuid.uuid4(),
+            name="Everything 5 %",
+            start_time=time(12, 0),
+            end_time=time(13, 0),
+            pct=5,
+            scope=DiscountScope.ALL,
+        ),
+    )
+    student = _user(engine)
+    cart = {
+        "slot_id": str(menu["slot"].id),
+        "lines": [{"item_id": str(menu["thali"].id), "qty": 1}],
+    }
+    quoted = api.post("/api/v1/quotes", json=cart, headers=_headers(student)).json()
+    assert quoted["payable_paise"] == 7600
+    admin = _user(engine, Role.ADMIN)
+    changed = api.patch(
+        f"/api/v1/admin/items/{menu['thali'].id}",
+        json={"price_paise": 9000},
+        headers=_headers(admin),
+    )
+    assert changed.status_code == 200, changed.text
+
+    response = api.post(URL, json=cart | {"quoted_payable_paise": 7600}, headers=_headers(student))
+
+    assert response.status_code == 409, response.text
+    fresh = response.json()["detail"]["quote"]
+    assert fresh["lines"][0]["unit_price_paise"] == 9000
+    assert fresh["payable_paise"] != 7600
+    assert fresh == api.post("/api/v1/quotes", json=cart, headers=_headers(student)).json()
+    assert _holds(engine, menu) == (0, 0, 0)
+    assert _orders(engine) == []
+    assert gateway.authorised == []
+
+
 def test_repeat_with_the_same_key_returns_the_same_order_once(
     api: TestClient, engine: Engine, menu: dict[str, Any], gateway: FakePaymentGateway
 ) -> None:
@@ -527,7 +571,7 @@ def test_unknown_item_is_422(api: TestClient, engine: Engine, menu: dict[str, An
     assert _holds(engine, menu) == (0, 0, 0)
 
 
-def test_quantity_above_max_qty_is_422(
+def test_tc_us26_ac1_quantity_above_p_max_qty_is_422(
     api: TestClient, engine: Engine, menu: dict[str, Any]
 ) -> None:
     body = _cart(menu)
@@ -535,6 +579,106 @@ def test_quantity_above_max_qty_is_422(
     response = api.post(URL, json=body, headers=_headers(_user(engine)))
     assert response.status_code == 422
     assert "may not exceed 3" in response.text
+
+
+def test_tc_us26_ac2_a_third_unfinished_order_on_one_date_is_422(
+    api: TestClient, engine: Engine, menu: dict[str, Any]
+) -> None:
+    student = _user(engine)
+    for _ in range(2):  # P-MAX_ACTIVE defaults to 2
+        assert api.post(URL, json=_cart(menu), headers=_headers(student)).status_code == 201
+    held = _holds(engine, menu)
+
+    response = api.post(URL, json=_cart(menu), headers=_headers(student))
+
+    assert response.status_code == 422
+    assert "at most 2 active orders" in response.text
+    assert _holds(engine, menu) == held
+    assert len(_orders(engine)) == 2
+    # The limit is per Student.
+    assert api.post(URL, json=_cart(menu), headers=_headers(_user(engine))).status_code == 201
+
+
+def test_repeating_an_order_at_the_limit_still_returns_it(
+    api: TestClient, engine: Engine, menu: dict[str, Any]
+) -> None:
+    student = _user(engine)
+    api.post(URL, json=_cart(menu), headers=_headers(student))
+    second = api.post(URL, json=_cart(menu), headers=_headers(student, "repeat-me"))
+
+    repeat = api.post(URL, json=_cart(menu), headers=_headers(student, "repeat-me"))
+
+    assert repeat.status_code == 201
+    assert repeat.json()["id"] == second.json()["id"]
+
+
+@pytest.mark.parametrize(
+    "finished",
+    [
+        OrderStatus.CANCELLED,
+        OrderStatus.PICKED_UP,
+        OrderStatus.NO_SHOW,
+        OrderStatus.PAYMENT_FAILED,
+    ],
+)
+def test_finished_orders_do_not_count_towards_p_max_active(
+    api: TestClient, engine: Engine, menu: dict[str, Any], finished: OrderStatus
+) -> None:
+    student = _user(engine)
+    first = api.post(URL, json=_cart(menu), headers=_headers(student)).json()
+    api.post(URL, json=_cart(menu), headers=_headers(student))
+    _set(engine, Order, Order.id == uuid.UUID(first["id"]), status=finished)
+
+    response = api.post(URL, json=_cart(menu), headers=_headers(student))
+
+    assert response.status_code == 201, response.text
+
+
+def test_orders_on_another_date_do_not_count_towards_p_max_active(
+    api: TestClient, engine: Engine, menu: dict[str, Any]
+) -> None:
+    yesterday = date(2026, 10, 5)
+    old_slot = Slot(
+        id=uuid.uuid4(),
+        service_date=yesterday,
+        starts_at=datetime(2026, 10, 5, 12, 15, tzinfo=IST),
+        ends_at=datetime(2026, 10, 5, 12, 30, tzinfo=IST),
+        capacity=30,
+    )
+    _add(
+        engine,
+        ServiceDay(
+            service_date=yesterday,
+            window_start=time(12, 0),
+            window_end=time(14, 30),
+            slot_len_min=15,
+            default_capacity=30,
+        ),
+    )
+    _add(engine, old_slot)
+    student = _user(engine)
+    for _ in range(2):
+        api.post(URL, json=_cart(menu), headers=_headers(student))
+    _set(engine, Order, Order.student_id == student.id, slot_id=old_slot.id)
+
+    response = api.post(URL, json=_cart(menu), headers=_headers(student))
+
+    assert response.status_code == 201, response.text
+
+
+def test_two_placements_at_once_cannot_both_pass_the_limit(
+    api: TestClient, engine: Engine, menu: dict[str, Any]
+) -> None:
+    student = _user(engine)
+    api.post(URL, json=_cart(menu), headers=_headers(student))
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(
+            pool.map(lambda _: api.post(URL, json=_cart(menu), headers=_headers(student)), range(4))
+        )
+
+    assert sorted(r.status_code for r in responses) == [201, 422, 422, 422]
+    assert len(_orders(engine)) == 2
 
 
 def test_unknown_slot_is_404(api: TestClient, engine: Engine, menu: dict[str, Any]) -> None:

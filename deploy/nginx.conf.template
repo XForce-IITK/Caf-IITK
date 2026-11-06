@@ -1,0 +1,44 @@
+# nginx for the AWS stack (docker-compose.prod.yml), the origin behind CloudFront.
+# CloudFront serves HTTPS with its own certificate and redirects HTTP to HTTPS
+# (NFR-27); the EC2 security group admits port 80 only from CloudFront's
+# origin-facing addresses, so nothing reaches nginx except through CloudFront.
+
+server {
+    listen 80 default_server;
+
+    # CloudFront appends the viewer's address to X-Forwarded-For. Take the last
+    # entry (real_ip_recursive off), so a client cannot choose the address that
+    # the login rate limit counts (NFR-21).
+    set_real_ip_from 0.0.0.0/0;
+    real_ip_header X-Forwarded-For;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options nosniff always;
+
+    # The client and the API share the CloudFront origin, so CORS allows only it.
+    location /api/ {
+        proxy_pass http://api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    location = /health {
+        proxy_pass http://api:8000;
+    }
+
+    location = /ready {
+        proxy_pass http://api:8000;
+    }
+
+    # Metrics stay off the internet; read them on the instance at 127.0.0.1:8000.
+    location = /metrics {
+        return 404;
+    }
+
+    # The Flutter web build; unknown paths are client routes.
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+    }
+}

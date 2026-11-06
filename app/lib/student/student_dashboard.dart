@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../api/api.dart';
 import '../api/errors.dart';
@@ -7,12 +8,13 @@ import '../dashboards/dashboard_scaffold.dart';
 import 'cancel_order.dart';
 import 'format.dart';
 import 'modify_order.dart';
+import 'order_history.dart';
 import 'order_tracking.dart';
 import 'student_state.dart';
 
-/// The Student's one screen: pick items and a pickup slot, see the exact
-/// price, and place the order. Modify, cancel and tracking join it once their
-/// endpoints exist.
+/// The Student's main screen: pick items and a pickup slot, see the exact
+/// price, place the order, then track, modify or cancel it. Past orders are
+/// one tap away under "My orders".
 class StudentDashboard extends ConsumerWidget {
   const StudentDashboard({super.key});
 
@@ -27,18 +29,29 @@ class StudentDashboard extends ConsumerWidget {
           constraints: const BoxConstraints(maxWidth: 720),
           child: ListView(
             padding: const EdgeInsets.all(16),
-            children: order != null
-                ? [_OrderPlaced(order)]
-                : const [
-                    _Heading('Menu'),
-                    _Menu(),
-                    SizedBox(height: 24),
-                    _Heading('Pickup slot'),
-                    _Slots(),
-                    SizedBox(height: 24),
-                    _Heading('Your order'),
-                    _CheckoutPanel(),
-                  ],
+            children: [
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  key: const Key('my-orders'),
+                  onPressed: () => context.go(myOrdersPath),
+                  icon: const Icon(Icons.receipt_long),
+                  label: const Text('My orders'),
+                ),
+              ),
+              ...order != null
+                  ? [_OrderPlaced(order)]
+                  : const [
+                      _Heading('Menu'),
+                      _Menu(),
+                      SizedBox(height: 24),
+                      _Heading('Pickup slot'),
+                      _Slots(),
+                      SizedBox(height: 24),
+                      _Heading('Your order'),
+                      _CheckoutPanel(),
+                    ],
+            ],
           ),
         ),
       ),
@@ -153,7 +166,13 @@ class _MenuItemTile extends ConsumerWidget {
                 ),
               ],
             ),
-            if (item.description.isNotEmpty) Text(item.description),
+            // FR-13: name, description, category, price, portions, orderable.
+            Text(
+              item.description.isEmpty
+                  ? categoryLabel(item.category)
+                  : '${categoryLabel(item.category)} · ${item.description}',
+              key: Key('details-${item.id}'),
+            ),
             Row(
               children: [
                 Expanded(
