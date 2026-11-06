@@ -3,7 +3,7 @@
 Latency, throughput and agent run time against NFR-8 to NFR-12 (SRS §4).
 - Measurement: CAFIITK-188, sections 1 and 2.
 - Bottleneck analysis, with before-and-after numbers: CAFIITK-189, section 3.
-- The numbers of record for Deliverable 3 will come from the AWS deployment (CAFIITK-190) and will be added as section 4. The laptop runs stay as the baseline.
+- The AWS run planned as section 4 was not done for Deliverable 3 (see §4). The laptop runs in sections 2, 3 and 5 are therefore the numbers of record.
 
 ## 1. How it was measured
 
@@ -91,8 +91,9 @@ NFR-10 sustained 19.1 accepted orders per second, and every order was accepted. 
 not an NFR-10 target, but it shows a queue building up during the minute.
 
 NFR-11's LLM run was not measured because no `CAF_LLM_API_KEY` is configured in this
-environment. The heuristic fallback (FR-59) was timed instead. The LLM run is to be
-measured on AWS, where the key is set.
+environment. The heuristic fallback (FR-59) was timed instead. No key is configured
+on the AWS deployment either (§4), so the LLM run was not measured for D3; NFR-11 was
+closed on direct verification (`Requirements-Traceability.md`).
 
 ### 2.2 Server side (from /metrics)
 
@@ -279,8 +280,8 @@ unless marked.
   cost, at the price of showing stale portion counts during a rush. The server would still
   refuse a sold-out order, but the menu would claim it was available.
 - **More worker processes by default.** This depends on the host's CPUs, and the free-tier
-  EC2 instance has two. The setting is now an environment variable; the AWS run (section
-  4) decides its value there.
+  EC2 instance has two. The setting is now an environment variable. The deployment uses 2
+  workers, one per CPU (§4), but this was not measured there.
 
 ### 3.7 Where this leaves NFR-8, NFR-9 and NFR-12
 
@@ -303,12 +304,23 @@ not, any longer, lock contention.
 
 ## 4. Run 2: AWS (EC2 + RDS)
 
-Pending CAFIITK-190. Three things will be done there:
-- Run the same harness against the deployed stack, with the load client off the instance.
-  `--fresh` must not be used, since it empties the database.
-- Time an LLM agent run with the key configured.
-- Choose `WEB_CONCURRENCY` and `CAF_DB_POOL_SIZE` for the instance's CPUs and RDS's
-  `max_connections`.
+**Not run for Deliverable 3.** The stack was deployed on 5 Nov 2026 (CAFIITK-190, PR #106):
+EC2 `t3.small` (2 vCPU) and RDS `db.t4g.micro`, behind CloudFront. No load run was made
+against it before the deadline. None of the three planned steps was done:
+
+- **The harness against the deployed stack, with the load client off the instance.** Not
+  run. If it is run later, `--fresh` must not be used, since it empties the database.
+- **An LLM agent run timed with the key configured.** Not possible: no `CAF_LLM_API_KEY`
+  is set on the deployment, so it runs the heuristic planner only (`Cost-Report.md` §5).
+- **`WEB_CONCURRENCY` and `CAF_DB_POOL_SIZE` tuned for the instance.** The deployment runs
+  with `WEB_CONCURRENCY=2` (one worker per vCPU) and `CAF_DB_POOL_SIZE=5`
+  (`deploy/.env.production.example`). These follow §3 but were not measured on AWS.
+
+So no performance result in this report comes from AWS. The laptop results stand as the
+record: NFR-8, NFR-9 and NFR-12 are not met (§3.7, §5.4); NFR-10 is met on the local stack
+(§2). The Jira tasks for NFR-8, 9 and 12 were closed by team decision, with these shortfalls
+recorded on each; NFR-10's was closed on the local result. How to run the AWS measurement is described on CAFIITK-190
+and in §5.4.
 
 ## 5. US-31 acceptance (CAFIITK-156)
 
@@ -411,8 +423,8 @@ Both tests failed again.
   smaller pool's connections inside `caf-api` (§3.3), and the limit of §3.7: CPU across two
   processes.
 - **The NFR-12 orders were slower** than before 189 in this single run. §3.5 shows how much
-  one run can vary on a laptop, so one run on each side cannot show a regression. AWS will
-  settle it.
+  one run can vary on a laptop, so one run on each side cannot show a regression. The AWS
+  run that would have settled it was not done (§4).
 - **One read got no response.** A menu read ended in a `RemoteProtocolError` (the
   connection closed without an answer), the first error in either of this section's runs.
   §3.5 reports a similar `ReadError` on the base build. Under peak read load, a connection
@@ -424,7 +436,7 @@ Both tests failed again.
 close (NFR-8 p95 570 ms against 500 ms). AC2 is about five times over its target.
 CAFIITK-156 delivers the acceptance tests and these two measurements.
 
-The criteria are to be measured again on AWS (CAFIITK-190) with the same command, with the
-load generator off the instance and `WEB_CONCURRENCY` set for its CPUs. US-31 is met only
-when both tests pass there. Whether NFR-9's "100 concurrent users" includes think time
+The criteria were to be measured again on AWS with the same command, with the load
+generator off the instance. That run was not done for D3 (§4), so US-31 stays not met.
+CAFIITK-190 records the command for a later run. Whether NFR-9's "100 concurrent users" includes think time
 (§3.7, option 3) changes AC2's load, and is for the team to decide.
