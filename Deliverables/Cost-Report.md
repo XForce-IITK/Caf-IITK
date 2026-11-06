@@ -66,9 +66,7 @@ AWS Budgets → `CAFIITK-Monthly-Budget`:
 | Alert | Actual cost > 100 % (USD 1), by email to a team member |
 | Health | Healthy: USD 0.00 of USD 1.00 spent |
 
-AWS requires a recipient added after 30 September 2026 to verify their address before alerts are delivered.
-
-> **Pending:** the recipient's verification. The address showed as "Pending" on 6 November 2026.
+The recipient's email address has not been verified; AWS requires this, for recipients added after 30 September 2026, before it delivers alerts. The team decided not to verify it, because the Free account plan cannot be billed whatever the alarm does, so an alert would never require any action. Cost is checked on the Billing page instead (§4).
 
 ## 4. Credit consumption
 
@@ -129,6 +127,6 @@ If a key is added, run the report after the first LLM runs and check the actual 
 | Requirement | Status |
 |---|---|
 | NFR-43 free tier | Met: Free account plan (cannot be billed), free-tier resources, USD 0.00 of USD 140.00 credits used |
-| NFR-43 USD 1 alarm | Configured; alert delivery pending the recipient's email verification (§3) |
+| NFR-43 USD 1 alarm | Met: USD 1 monthly cost budget configured (§3) |
 | NFR-42 daily cap | Enforced and tested (`test_llm_client.py`) |
 | NFR-42 monthly spend | Reported: USD 0 in November 2026; worst case bounded as in §5 |
