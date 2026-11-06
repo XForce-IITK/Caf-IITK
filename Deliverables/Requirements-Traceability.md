@@ -21,7 +21,7 @@ Every acceptance criterion named in the matrix has a test named for it. This was
 | | Pass | Met locally | Partial | Fail | Not run | Total |
 |---|---|---|---|---|---|---|
 | Functional (FR) | 64 | 0 | 0 | 0 | 0 | 64 |
-| Non-functional (NFR) | 37 | 1 | 2 | 3 | 2 | 45 |
+| Non-functional (NFR) | 41 | 1 | 0 | 3 | 0 | 45 |
 
 All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35, FR-39, FR-58, FR-60 and NFR-1.
 
@@ -31,9 +31,6 @@ All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35
 |---|---|---|---|
 | NFR-8, NFR-9, NFR-12 | Fail | Latency on the local stack is above target before and after the CAFIITK-189 changes (Performance Report §3, §5). The Jira tasks are closed by team decision, with the shortfall and the remedies not done recorded on each | CAFIITK-88, 89, 92 |
 | NFR-10 | Met on the local stack | The AWS run; the Jira task is closed on the local result | CAFIITK-90 |
-| NFR-27 | Partial | HTTPS, which needs the deployment; CORS is verified | CAFIITK-107 |
-| NFR-42 | Partial | The monthly LLM spend report; the daily cap is verified | CAFIITK-122 |
-| NFR-40, NFR-43 | Not run | The AWS deployment and cost tracking (CAFIITK-190, 191) | CAFIITK-120, 123 |
 
 ## Full matrix
 
@@ -129,7 +126,7 @@ All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35
 | NFR-24 |  | Must | I, T | — | — | CAFIITK-104 (Done) | TC-NFR24 — Secret scan (gitleaks) over the full history on every PR (CAFIITK-170) | Security | — | Pass (direct verification) |
 | NFR-25 |  | Must | I, T | UC-23, UC-24 | US-41 | CAFIITK-105 (Done), CAFIITK-166 | TC-US41-AC1…AC3 | Security | #47 | Pass |
 | NFR-26 |  | Must | I, T | UC-21 | US-38 | CAFIITK-106 (Done), CAFIITK-163 | TC-US38-AC1…AC4 | Security | #86 | Pass |
-| NFR-27 |  | Should | I | — | — | CAFIITK-107 (To Do) | TC-NFR27 — CORS (`test_cors.py`); HTTPS by inspection of the deployment | Security | — | Partial: CORS is restricted to `CAF_CORS_ORIGINS` in production (`test_cors.py`); HTTPS is pending the AWS deployment (CAFIITK-190) |
+| NFR-27 |  | Should | I | — | — | CAFIITK-107 (Done) | TC-NFR27 — CORS (`test_cors.py`); HTTPS by inspection of the deployment (`deploy/README.md` §4, §8) | Security | #106 | Pass (`deploy/README.md`): on the deployed stack, HTTP redirects to HTTPS (CloudFront certificate, HSTS set); a preflight from the client origin is allowed and one from another origin gets 400; the instance is not reachable directly. TLS ends at CloudFront, and the instance accepts port 80 only from CloudFront |
 | NFR-28 |  | Must | I | — | — | CAFIITK-108 (Done) | TC-NFR28 — one JSON line per request with the required fields (`test_observability.py`) | Integration, Inspection | #84 | Pass |
 | NFR-29 |  | Must | T | — | — | CAFIITK-109 (Done) | TC-NFR29 — the correlation ID in responses, logs, audit rows, mockpay calls and worker jobs (`test_observability.py`) | Integration, Inspection | #84 | Pass |
 | NFR-30 |  | Must | T, I | — | — | CAFIITK-110 (Done) | TC-NFR30 — passwords, tokens and keys are redacted from logs (`test_observability.py`) | Integration, Inspection | #84 | Pass |
@@ -142,10 +139,10 @@ All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35
 | NFR-37 |  | Must | I | — | — | CAFIITK-117 (Done) | TC-NFR37 — Concurrency tests run on PostgreSQL 16 via testcontainers (CAFIITK-169, 172) | CI, Inspection | — | Pass (direct verification) |
 | NFR-38 |  | Must | T | — | — | CAFIITK-118 (Done) | TC-NFR38 — Pricing engine is a pure function with DB-free unit tests (CAFIITK-144) | CI, Inspection | — | Pass (direct verification) |
 | NFR-39 |  | Must | I | — | — | CAFIITK-119 (Done) | TC-NFR39 — CI regenerates the Dart client and fails if it differs (CAFIITK-176) | CI, Inspection | — | Pass (direct verification) |
-| NFR-40 |  | Must | I | — | — | CAFIITK-120 (To Do) | TC-NFR40 | CI, Inspection | — | Not run: pending the AWS deployment (CAFIITK-190) |
+| NFR-40 |  | Must | I | — | — | CAFIITK-120 (Done) | TC-NFR40 — `docker-compose.prod.yml` inspected; `test_managed_database_roles.py` | CI, Inspection | #106 | Pass (`deploy/README.md`): `docker-compose.prod.yml` runs every service from the one image built from `./backend`, as locally, and the same Alembic chain (0001–0007) ran on RDS PostgreSQL 16; only configuration differs |
 | NFR-41 |  | Must | I | — | — | CAFIITK-121 (Done) | TC-NFR41 — CI runs on every PR; required checks block the merge (CAFIITK-170) | CI, Inspection | — | Pass (direct verification) |
-| NFR-42 |  | Must | A | — | — | CAFIITK-122 (To Do) | TC-NFR42 — the daily cap (`test_llm_client.py`); monthly spend by analysis | Analysis | — | Partial: P-AGENT_DAILY_CAP is enforced across processes (`test_llm_client.py`, TC-US43-AC2); the monthly LLM spend report is pending (CAFIITK-191) |
-| NFR-43 |  | Must | I | — | — | CAFIITK-123 (To Do) | TC-NFR43 | Analysis | — | Not run: pending the AWS deployment and cost tracking (CAFIITK-190, 191) |
+| NFR-42 |  | Must | A | — | — | CAFIITK-122 (Done) | TC-NFR42 — the daily cap (`test_llm_client.py`); monthly spend by analysis (`test_llm_spend.py`, `Deliverables/Cost-Report.md` §5) | Analysis | #108 | Pass (`Deliverables/Cost-Report.md` §5): P-AGENT_DAILY_CAP is enforced across processes (`test_llm_client.py`, TC-US43-AC2); the spend report on the deployed stack shows USD 0 of USD 5 for November 2026, and the cap bounds the month under USD 5 while a request averages under about USD 0.0032. No LLM key is configured on the deployment, so no real LLM spend has been measured |
+| NFR-43 |  | Must | I | — | — | CAFIITK-123 (Done) | TC-NFR43 — AWS console evidence (`Deliverables/Cost-Report.md` §1–4) | Analysis | #108 | Pass (`Deliverables/Cost-Report.md`): AWS Free account plan with free-tier resources, USD 0.00 of USD 140.00 credits used; a USD 1 monthly cost budget alerts above 100 %. The alert's email recipient is unverified by team decision, so the alert is not delivered |
 | NFR-44 |  | Must | I | — | — | CAFIITK-124 (Done) | TC-NFR44 — CI fails a PR whose branch, title or any non-merge commit lacks its Jira key (CAFIITK-124) | CI, Inspection | #100 | Pass (direct verification) |
 | NFR-45 |  | Must | I | — | — | CAFIITK-125 (Done) | TC-NFR45 — Branch protection: one non-author approval and green CI (CAFIITK-173) | CI, Inspection | — | Pass (direct verification) |
 
