@@ -129,6 +129,8 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E117 | The CAFIITK-187 reference implementation and its worked cases come from the same AI reading of FR-24 as the tests' expectations, so a shared misreading would pass. The breakage check stopped at the first failing test, so it does not show that each property catches a bug on its own | **Quality risk** | The AI's review of what the check proves | Pending: see E119 for the reference's review |
 | E118 | Wrong references in CAFIITK-143 and CAFIITK-187. #93 cited SADD §7 for the routes (they are in §2.6). A comment in `pricing/schemas.py` and the docstring of `test_pricing_properties.py` cite FR-6 for the price range (it is FR-8). That docstring also says at most 20 items per cart; the tests draw at most 12 | Hallucinated reference | Checking the SRS and SADD while writing these entries | Pending: not corrected |
 | E119 | The AI wrote "I reviewed…" in the author's voice in #93 (the diff, the limits, the locking) and #94 (the reference against FR-24) without being told any such review took place. This repeats E101 | Misattribution | Re-reading the PRs while writing these entries | Pending: the author to confirm or correct both descriptions |
+| E120 | A CI run on the release PR showed as cancelled. The AI re-ran it, not seeing that a newer run for the same PR was already live. The workflow cancels older runs in the same group, so the re-run cancelled the live run, and the release checks had to run again | Process error | Checking every run listed for the PR after the second cancellation | The AI cancelled its own re-run and let the checks run again on the next update to `develop`. They passed |
+| E121 | Drafts of the D3 reports contained claims not taken from the source: a 10 s payment timeout (the test uses 0.5 s), two wrong FR numbers, sprint issue counts, per-area test totals, "Unicode" fuzz values that the fuzz list does not contain, "two thirds" where the data gives three quarters, and two guessed reasons for uncovered code | Unverified claims | The AI checked each claim against the test files, the coverage output, Jira and GitHub before commit | All corrected before the PR was opened |
 
 ---
 
@@ -1032,3 +1034,47 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
   - Full suite: 1,047 passed. No hand check, because nothing at runtime changed.
   - Approved by a teammate (Rudransh) (#94).
 - **Outcome:** accepted. The engine needed no change, and the tests found no defect in it. The limits of this evidence are in E117.
+
+### Deployment and cost evidence before closing NFR-27, 40, 42 and 43 (CAFIITK-193)
+
+- **Asked for:** once the AWS deployment (CAFIITK-190) and cost tracking (CAFIITK-191) were merged, close the requirement tasks that depended on them.
+- **AI produced:**
+  - Its own unauthenticated checks of the live stack, without relying on the deployment PR's description: the redirect to HTTPS, the certificate and HSTS, `/health` and `/ready`, `/metrics` hidden, CORS allowing the client origin and refusing another, and the instance unreachable except through CloudFront.
+  - An inspection of the production Compose file: one image built from `./backend` runs every service, with the same migration chain.
+  - A review of the cost report and its tests before closing NFR-42 and NFR-43.
+  - A closing comment on each task naming its drawback:
+    - TLS ends at CloudFront (NFR-27);
+    - no LLM key on the deployment, so the measured spend is zero and the USD 5 bound is an analysis (NFR-42);
+    - the budget alert's email recipient is unverified (NFR-43).
+  - The traceability matrix updated to match, and the evidence for each requirement cited in its documents, as the author asked.
+- **How it was checked:** every figure in the comments comes from a command run against the live stack or from the cost report. The matrix PR was approved by a teammate (Rudransh).
+- **Outcome:** accepted.
+
+### Sprint 3 release (CAFIITK-197)
+
+- **Asked for:** the release PR from `develop` to `main`, then the `d3` tag.
+- **AI produced:**
+  - A release description built from the merged PR list and Jira, in the same format as the Sprint 2 release. It lists the known gaps.
+  - A further PR bringing `main`'s previous release merge commit into `develop`, because the ruleset blocked the release as out of date. That PR changed no files.
+  - After the merge, the annotated tag `d3` on `main`'s merge commit, and the release issues closed.
+- **What changed:** a re-run of a CI job cancelled the live run, so the checks ran again (E120).
+- **How it was checked:** all four required checks passed on the release PR. A teammate (Rudransh) approved both PRs. The tag was confirmed to point at the release merge commit.
+- **Outcome:** accepted.
+
+### D3 reports: testing, coverage, concurrency, security, failure, deployment, timeline and project (CAFIITK-193)
+
+- **Asked for:** the documents the brief requires for D3 that were not yet in `Deliverables/`.
+- **AI produced:**
+  - A full run of both suites at the release commit, with coverage, to give every report one run of record.
+  - Seven new reports:
+    - unit, integration, system and adversarial tests;
+    - coverage;
+    - concurrency;
+    - the threat model the design document had deferred to D3;
+    - failure and recovery;
+    - deployment;
+    - a timeline with a Gantt chart, and a project report with the Jira dashboard figures.
+  - An update to the performance report: the AWS load run, which was still described as pending, is now stated as not done.
+- **Team decision:** the author chose one file per brief item, and chose to state that the AWS load run was not done rather than wait for one.
+- **What changed:** checking each claim against its source before commit corrected several drafted figures (E121). One merged PR turned out to have no approval of its own: it had been stacked on another PR's branch. The project report says so instead of claiming every PR was reviewed.
+- **Team evaluation:** accepted; the PR was approved by a teammate (Rudransh) with no change requests, then merged.
