@@ -28,7 +28,15 @@ Caf@IITK, a campus cafeteria pre-order and pickup-slot platform. CS455 Software 
 
 ## 2. Jira dashboard
 
-The tables below are the dashboard's content, computed from Jira with JQL. A screenshot of the live Jira dashboard goes in `Deliverables/images/jira-dashboard.png`.
+The tables in this section are the project's final Jira dashboard. They were computed after Sprint 3 closed, and each can be reproduced in Jira with the JQL below (merged PR counts come from GitHub):
+
+| Table | JQL |
+|---|---|
+| 2.1 Issues by type and status | `project = CAFIITK`, grouped by Issue Type and Status |
+| 2.2 Issues by epic | `project = CAFIITK AND parent = CAFIITK-<epic>` |
+| 2.3 Sprints | `project = CAFIITK AND sprint = "CAF Sprint <n>"` |
+| 2.4 Assigned work | `project = CAFIITK AND issuetype in (Story, Task, Bug)`, grouped by Assignee and Issue Type |
+| 2.5 Defects | `project = CAFIITK AND issuetype = Bug` |
 
 ### 2.1 Issues by type and status
 
