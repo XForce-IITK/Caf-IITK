@@ -67,7 +67,7 @@ def configure_service_day(
     Slots that orders reference are kept; FR-18 refuses a change that would remove one.
     """
     try:
-        return SlotService(session).configure_day(admin, service_date, body)
+        return SlotService(session).configure_day(admin, service_date, body, clock.now())
     except SlotLengthError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except (SlotHasOrdersError, CapacityBelowBookedError) as exc:

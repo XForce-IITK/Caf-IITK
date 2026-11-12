@@ -75,14 +75,17 @@ class SlotService:
         self.repo = SlotRepository(session)
 
     def configure_day(
-        self, admin: User, service_date: date, config: ServiceDayConfig
+        self, admin: User, service_date: date, config: ServiceDayConfig, now: datetime
     ) -> ServiceDayOut:
         """FR-17: set the window, slot length and capacity, and (re)generate the slots.
 
         A slot that orders reference is kept, with its id and bookings, and given the
         new default capacity; the configuration is refused if it would remove such a
-        slot or take its capacity below its booked seats (FR-18). Every other slot is
-        regenerated. The day row is updated in place so daily_inventory rows survive.
+        slot or take its capacity below its booked seats (FR-18). A slot with orders
+        that has already ended is history: it is kept as it is even outside the new
+        window, so the rest of the day can still be reconfigured. Every other slot is
+        regenerated, except where it would overlap a kept one. The day row is updated
+        in place so daily_inventory rows survive.
         """
         try:
             with self.session.begin():
@@ -101,13 +104,16 @@ class SlotService:
                     before = _day_summary(
                         day.window_start, day.window_end, day.slot_len_min, day.default_capacity
                     )
-                    kept = self._keep_slots_with_orders(service_date, bounds, config)
+                    kept = self._keep_slots_with_orders(service_date, bounds, config, now)
                     day.window_start = config.window_start
                     day.window_end = config.window_end
                     day.slot_len_min = slot_len
                     day.default_capacity = config.default_capacity
-                taken = {(s.starts_at, s.ends_at) for s in kept}
-                new = [b for b in bounds if b not in taken]
+                new = [
+                    (start, end)
+                    for start, end in bounds
+                    if not any(start < s.ends_at and s.starts_at < end for s in kept)
+                ]
                 slots = kept + self.repo.add_slots(service_date, new, config.default_capacity)
                 slots.sort(key=lambda s: s.starts_at)
                 write_audit(
@@ -142,22 +148,27 @@ class SlotService:
         service_date: date,
         bounds: list[tuple[datetime, datetime]],
         config: ServiceDayConfig,
+        now: datetime,
     ) -> list[Slot]:
-        """Delete the day's slots that no order references; return the others, re-capacitated.
+        """Delete the day's slots that no order references; return the others.
 
-        Raises before changing anything if a referenced slot is not in the new bounds or
-        has more seats booked than the new capacity.
+        A kept slot in the new bounds takes the new capacity; one that has ended and is
+        outside them is left as it is. Raises before changing anything if a referenced
+        slot that has not ended is not in the new bounds, or has more seats booked than
+        the new capacity.
         """
         current = self.repo.lock_slots(service_date)
         with_orders = self.repo.slot_ids_with_orders([s.id for s in current])
         kept = sorted((s for s in current if s.id in with_orders), key=lambda s: s.starts_at)
         wanted = set(bounds)
+        in_window = [s for s in kept if (s.starts_at, s.ends_at) in wanted]
         for slot in kept:
-            if (slot.starts_at, slot.ends_at) not in wanted:
+            if slot not in in_window and slot.ends_at > now:
                 raise SlotHasOrdersError(slot.starts_at)
+        for slot in in_window:
             if slot.booked > config.default_capacity:
                 raise CapacityBelowBookedError(slot, config.default_capacity)
-        for slot in kept:
+        for slot in in_window:
             slot.capacity = config.default_capacity
         self.repo.delete_slots([s.id for s in current if s.id not in with_orders])
         return kept
