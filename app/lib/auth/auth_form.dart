@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
+import '../theme.dart';
+
 /// The shared frame for the login and register screens: a centred column that
 /// stays usable from 360 px to 1920 px wide (NFR-33).
 class AuthScaffold extends StatelessWidget {
@@ -10,20 +13,41 @@ class AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(title: const Text('Caf@IITK')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 32),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: const BoxConstraints(maxWidth: 400),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                  const SizedBox(height: 24),
-                  child,
+                  const Center(child: BrandMark(size: 34)),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Pre-order your meal. Skip the queue.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: CafColors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(title, style: theme.textTheme.headlineSmall),
+                          const SizedBox(height: 20),
+                          child,
+                        ],
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
