@@ -146,11 +146,16 @@ class RunRepository:
     def reusable_run(
         self, input_hash: str, service_date: date, exclude: uuid.UUID
     ) -> AgentRun | None:
-        """The latest successful run of this service date that planned from the same data."""
+        """The latest LLM-planned run of this service date that planned from the same data.
+
+        A heuristic fallback is never reused, so the next run tries the LLM again
+        (CAFIITK-209).
+        """
         return self.session.scalar(
             select(AgentRun)
             .where(
                 AgentRun.status == AgentRunStatus.SUCCEEDED,
+                AgentRun.source == AgentSource.LLM,
                 AgentRun.input_hash == input_hash,
                 AgentRun.report["service_date"].astext == service_date.isoformat(),
                 AgentRun.id != exclude,
