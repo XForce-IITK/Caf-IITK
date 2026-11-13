@@ -67,10 +67,10 @@ class Settings(BaseSettings):
     seed_kitchen_email: str | None = None
     seed_kitchen_password: str | None = None
 
-    @field_validator("llm_api_key", mode="before")
+    @field_validator("llm_api_key", "llm_base_url", mode="before")
     @classmethod
-    def _blank_key_means_none(cls, value: object) -> object:
-        # Docker Compose passes an unset key as an empty string.
+    def _blank_means_none(cls, value: object) -> object:
+        # Docker Compose passes an unset variable as an empty string.
         return None if value == "" else value
 
     @model_validator(mode="after")
