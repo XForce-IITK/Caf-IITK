@@ -42,11 +42,14 @@ class MyOrdersScreen extends ConsumerWidget {
       title: 'My orders',
       body: _Centred(
         children: [
-          TextButton.icon(
-            key: const Key('back-to-menu'),
-            onPressed: () => context.go('/student'),
-            icon: const Icon(Icons.arrow_back),
-            label: const Text('Back to the menu'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('back-to-menu'),
+              onPressed: () => context.go('/student'),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back to the menu'),
+            ),
           ),
           orders.when(
             skipLoadingOnRefresh: true,
@@ -116,11 +119,14 @@ class OrderHistoryScreen extends ConsumerWidget {
       title: 'Order',
       body: _Centred(
         children: [
-          TextButton.icon(
-            key: const Key('back-to-orders'),
-            onPressed: () => context.go(myOrdersPath),
-            icon: const Icon(Icons.arrow_back),
-            label: const Text('My orders'),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const Key('back-to-orders'),
+              onPressed: () => context.go(myOrdersPath),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('My orders'),
+            ),
           ),
           OrderStatusPanel(orderId),
           if (order != null) ...[
