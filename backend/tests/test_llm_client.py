@@ -343,6 +343,46 @@ def test_openai_tool_call_arguments_are_kept_raw_even_if_malformed() -> None:
     assert response.tool_calls == (ToolCall("call_9", "propose_replenishment_plan", "{oops"),)
 
 
+def test_gemini_thought_signature_is_sent_back_with_its_tool_call() -> None:
+    # Gemini's OpenAI-compatible API returns extra_content on each tool call and
+    # rejects the next turn unless the call carries it back unchanged.
+    extra = {"google": {"thought_signature": "c2lnbmF0dXJl"}}
+    seen: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return _completion(
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {"name": "get_inventory_levels", "arguments": "{}"},
+                        "extra_content": extra,
+                    }
+                ],
+            }
+        )
+
+    provider = _openai(handler)
+    call = provider.complete(REQUEST).tool_calls[0]
+    assert call.extra_content is not None
+    provider.complete(
+        LLMRequest(
+            messages=(
+                Message("assistant", None, tool_calls=(call,)),
+                Message("tool", "{}", tool_call_id="call_1"),
+            )
+        )
+    )
+
+    messages = seen[1]["messages"]
+    assert isinstance(messages, list)
+    assert messages[0]["tool_calls"][0]["extra_content"] == extra
+
+
 @pytest.mark.parametrize(
     "handler",
     [
@@ -383,6 +423,7 @@ def test_openai_reply_without_choices_is_a_provider_error() -> None:
 
 def test_a_blank_key_means_no_key_and_a_set_key_is_hidden() -> None:
     assert Settings(llm_api_key="").llm_api_key is None
+    assert Settings(llm_base_url="").llm_base_url is None
     settings = Settings(llm_api_key=API_KEY)
     assert API_KEY not in repr(settings)
     assert API_KEY not in str(settings.model_dump())

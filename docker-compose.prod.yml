@@ -13,6 +13,8 @@ x-backend-env: &backend-env
   CAF_CORS_ORIGINS: '["https://${CAF_HOST:?set CAF_HOST in .env}"]'
   CAF_LLM_API_KEY: ${CAF_LLM_API_KEY:-}
   CAF_LLM_MODEL: ${CAF_LLM_MODEL:-gpt-4o-mini}
+  # Empty means OpenAI; set it to use another OpenAI-compatible API such as Gemini's.
+  CAF_LLM_BASE_URL: ${CAF_LLM_BASE_URL:-}
   CAF_SEED_ADMIN_EMAIL: ${CAF_SEED_ADMIN_EMAIL:-}
   CAF_SEED_ADMIN_PASSWORD: ${CAF_SEED_ADMIN_PASSWORD:-}
   CAF_SEED_KITCHEN_EMAIL: ${CAF_SEED_KITCHEN_EMAIL:-}
