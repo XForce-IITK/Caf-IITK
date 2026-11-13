@@ -868,6 +868,17 @@ def test_tc_us43_ac3_identical_tool_data_reuses_the_earlier_result(
     assert len(_proposals(engine, first_id)) == 1
 
 
+def test_the_briefing_gives_the_llm_the_replenishment_limit(
+    kitchen: Kitchen, run_with: Callable[..., Any]
+) -> None:
+    # CAFIITK-211: the LLM can tell a replenishable shortfall from one that needs a disable.
+    _, _, stub = run_with(reply("briefing"))
+
+    briefing = json.loads(stub.requests[0].messages[1].content or "{}")
+    assert briefing["repl_max"] == 200
+    assert briefing["forecast"]
+
+
 def test_a_heuristic_fallback_is_not_reused_and_the_llm_is_tried_again(
     kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
 ) -> None:
