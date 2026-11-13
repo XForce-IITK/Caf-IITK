@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.identity import User
+from app.modules.identity import cookie
 from app.modules.identity.dependencies import (
     CurrentUser,
     client_ip,
@@ -58,27 +59,58 @@ def register(body: RegisterRequest, session: SessionDep) -> UserOut:
         429: {"description": "Too many failed logins for this account or address (NFR-21)"},
     },
 )
-def login(body: LoginRequest, request: Request, session: SessionDep) -> TokenPair:
+def login(
+    body: LoginRequest, request: Request, response: Response, session: SessionDep
+) -> TokenPair:
+    """With `X-Token-Transport: cookie` the refresh token is set as an HttpOnly
+    cookie and left out of the body (CAFIITK-207)."""
     try:
-        return IdentityService(session).login(body, client_ip(request))
+        pair = IdentityService(session).login(body, client_ip(request))
+        return cookie.deliver(request, response, pair)
     except InvalidCredentialsError:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password") from None
     except RateLimitExceededError as exc:
         raise too_many_requests(exc) from None
 
 
-@router.post("/refresh", responses={401: {"description": "Invalid refresh token"}})
-def refresh(body: RefreshRequest, session: SessionDep) -> TokenPair:
+@router.post(
+    "/refresh",
+    responses={
+        401: {"description": "Invalid refresh token"},
+        422: {"description": "No refresh token in the body or the cookie"},
+    },
+)
+def refresh(
+    body: RefreshRequest, request: Request, response: Response, session: SessionDep
+) -> TokenPair:
+    """Rotate the refresh token from the body, or from the cookie when the request
+    carries `X-Token-Transport: cookie` (CAFIITK-207)."""
+    token = cookie.presented_token(request, body.refresh_token)
+    if token is None:
+        # As before the cookie existed: a request that presents no token is malformed.
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No refresh token presented")
     try:
-        return IdentityService(session).refresh(body.refresh_token)
+        pair = IdentityService(session).refresh(token)
     except InvalidRefreshTokenError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid refresh token") from None
+        # A dead cookie is removed, so the browser stops sending it.
+        headers = cookie.cleared_headers() if cookie.wants_cookie(request) else None
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Invalid refresh token", headers=headers
+        ) from None
+    return cookie.deliver(request, response, pair)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(body: RefreshRequest, user: CurrentUser, session: SessionDep) -> Response:
-    IdentityService(session).logout(user, body.refresh_token)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    body: RefreshRequest, request: Request, user: CurrentUser, session: SessionDep
+) -> Response:
+    token = cookie.presented_token(request, body.refresh_token)
+    if token is not None:
+        IdentityService(session).logout(user, token)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    if cookie.wants_cookie(request):
+        cookie.clear(response)
+    return response
 
 
 @router.get("/me")

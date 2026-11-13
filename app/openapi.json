@@ -1948,15 +1948,19 @@
         "additionalProperties": false,
         "properties": {
           "refresh_token": {
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "Refresh Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
           }
         },
-        "required": [
-          "refresh_token"
-        ],
         "title": "RefreshRequest",
         "type": "object"
       },
@@ -2461,8 +2465,15 @@
             "type": "integer"
           },
           "refresh_token": {
-            "title": "Refresh Token",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -2475,7 +2486,6 @@
         },
         "required": [
           "access_token",
-          "refresh_token",
           "expires_in",
           "role"
         ],
@@ -4405,6 +4415,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
+        "description": "With `X-Token-Transport: cookie` the refresh token is set as an HttpOnly\ncookie and left out of the body (CAFIITK-207).",
         "operationId": "login",
         "requestBody": {
           "content": {
@@ -4517,6 +4528,7 @@
     },
     "/api/v1/auth/refresh": {
       "post": {
+        "description": "Rotate the refresh token from the body, or from the cookie when the request\ncarries `X-Token-Transport: cookie` (CAFIITK-207).",
         "operationId": "refresh",
         "requestBody": {
           "content": {
@@ -4543,14 +4555,7 @@
             "description": "Invalid refresh token"
           },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "No refresh token in the body or the cookie"
           }
         },
         "summary": "Refresh",
