@@ -50,6 +50,9 @@ class ToolCall:
     id: str
     name: str
     arguments: str
+    # Provider data that must be sent back with the call on the next turn, as JSON
+    # (Gemini's thought_signature); None for OpenAI and the heuristic.
+    extra_content: str | None = None
 
 
 @dataclass(frozen=True)
