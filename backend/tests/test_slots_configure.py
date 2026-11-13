@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
+from app.core import clock
 from app.core.security import create_access_token
 from app.models.capacity import DailyInventory, ServiceDay, Slot
 from app.models.catalogue import MenuItem
@@ -52,6 +53,12 @@ def _user(engine: Engine, role: Role) -> User:
 
 def _auth(user: User) -> dict[str, str]:
     return {"Authorization": f"Bearer {create_access_token(user.id, user.role)}"}
+
+
+@pytest.fixture(autouse=True)
+def morning_of_d(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The day's lunch slots have not started yet, so none of them has ended.
+    monkeypatch.setattr(clock, "now", lambda: datetime(2026, 10, 6, 9, 0, tzinfo=IST))
 
 
 @pytest.fixture
@@ -198,6 +205,51 @@ def test_tc_us15_ac2_window_change_removing_a_slot_with_orders_is_409(
     day = _day(engine)
     assert day is not None
     assert day.window_start == time(12, 0)
+
+
+def test_an_ended_slot_with_orders_does_not_block_moving_the_window(
+    db_client: TestClient, engine: Engine, admin: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_client.put(URL, json=LUNCH, headers=admin)
+    first = _slots(engine)[0]
+    _order_on_first_slot(engine, OrderStatus.PICKED_UP)
+    with Session(engine) as session, session.begin():
+        session.execute(update(Slot).where(Slot.id == first.id).values(booked=1))
+    # 12:20: the booked 12:00-12:15 slot has ended, so only its history is left.
+    monkeypatch.setattr(clock, "now", lambda: datetime(2026, 10, 6, 12, 20, tzinfo=IST))
+
+    evening = {"window_start": "18:00", "window_end": "19:00", "default_capacity": 20}
+    response = db_client.put(URL, json=LUNCH | evening, headers=admin)
+
+    assert response.status_code == 200, response.text
+    slots = _slots(engine)
+    assert len(slots) == 5
+    # The ended slot is kept as it was, outside the new window.
+    assert (slots[0].id, slots[0].capacity, slots[0].booked) == (first.id, 30, 1)
+    assert slots[1].starts_at == datetime(2026, 10, 6, 18, 0, tzinfo=IST)
+    assert {s.capacity for s in slots[1:]} == {20}
+
+
+def test_new_slots_never_overlap_an_ended_slot_with_orders(
+    db_client: TestClient, engine: Engine, admin: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_client.put(URL, json=LUNCH, headers=admin)
+    first = _slots(engine)[0]
+    _order_on_first_slot(engine, OrderStatus.PICKED_UP)
+    monkeypatch.setattr(clock, "now", lambda: datetime(2026, 10, 6, 12, 20, tzinfo=IST))
+
+    # 30-minute slots: 12:00-12:30 would overlap the kept 12:00-12:15 slot.
+    response = db_client.put(URL, json=LUNCH | {"slot_len_min": 30}, headers=admin)
+
+    assert response.status_code == 200, response.text
+    slots = _slots(engine)
+    assert slots[0].id == first.id
+    assert [s.starts_at.astimezone(IST).strftime("%H:%M") for s in slots[1:]] == [
+        "12:30",
+        "13:00",
+        "13:30",
+        "14:00",
+    ]
 
 
 def test_changing_the_slot_length_under_a_slot_with_orders_is_409(
