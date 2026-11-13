@@ -16,6 +16,7 @@ from app.core.errors import add_error_handlers
 from app.core.logs import configure_logging
 from app.core.metrics import MetricsMiddleware
 from app.core.validation import reject_unknown_query_params
+from app.modules.identity.cookie import TRANSPORT_HEADER
 
 LOCAL_ORIGIN_REGEX = r"^http://(localhost|127\.0\.0\.1)(:\d+)?$"
 
@@ -55,7 +56,15 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_origin_regex=None if settings.is_production else LOCAL_ORIGIN_REGEX,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", REQUEST_ID_HEADER],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            REQUEST_ID_HEADER,
+            TRANSPORT_HEADER,
+        ],
+        # CAFIITK-207: the refresh-token cookie must reach /auth from the client's origin.
+        allow_credentials=True,
         expose_headers=["Retry-After", REQUEST_ID_HEADER],
     )
     # Outermost, so the time recorded includes every other middleware (NFR-31).

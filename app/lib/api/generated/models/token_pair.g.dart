@@ -9,9 +9,9 @@ part of 'token_pair.dart';
 TokenPair _$TokenPairFromJson(Map<String, dynamic> json) => TokenPair(
   accessToken: json['access_token'] as String,
   expiresIn: (json['expires_in'] as num).toInt(),
-  refreshToken: json['refresh_token'] as String,
   role: Role.fromJson(json['role'] as String),
   tokenType: json['token_type'] as String? ?? 'bearer',
+  refreshToken: json['refresh_token'] as String?,
 );
 
 Map<String, dynamic> _$TokenPairToJson(TokenPair instance) => <String, dynamic>{

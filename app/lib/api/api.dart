@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/session.dart';
+import '../auth/token_store.dart';
 import 'generated/export.dart';
 import 'interceptors.dart';
 
@@ -26,6 +27,9 @@ final dioProvider = Provider<Dio>((ref) {
   final dio = Dio(BaseOptions(baseUrl: apiBaseUrl));
   dio.interceptors.addAll([
     RequestIdInterceptor(),
+    TokenTransportInterceptor(
+      usesCookie: () => ref.read(refreshTokenStoreProvider).usesCookie,
+    ),
     AuthInterceptor(
       dio: dio,
       readSession: () => ref.read(sessionProvider),
