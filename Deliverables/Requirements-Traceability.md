@@ -78,7 +78,7 @@ All 10 critical (★) requirements pass: FR-7, FR-24, FR-30, FR-32, FR-34, FR-35
 | FR-40 |  | Must | T, D | UC-14 | US-29 | CAFIITK-56 (Done), CAFIITK-154 | TC-US29-AC1…AC2 | Integration, E2E | #31 | Pass |
 | FR-41 |  | Must | T, D | UC-11 | US-23 | CAFIITK-57 (Done), CAFIITK-148 | TC-US23-AC1…AC3 | Integration | #6, #17 | Pass |
 | FR-42 |  | Must | T, D | UC-16 | US-33 | CAFIITK-58 (Done), CAFIITK-158 | TC-US33-AC1…AC2 | Integration, E2E | #35 | Pass |
-| FR-43 |  | Must | T | UC-17 | US-34 | CAFIITK-59 (Done), CAFIITK-159 | TC-US34-AC1…AC4 | Integration | #53 | Pass |
+| FR-43 |  | Must | T | UC-17 | US-34 | CAFIITK-59 (Done), CAFIITK-159, CAFIITK-210 | TC-US34-AC1…AC4; `test_auto_noshow.py` (orders still READY at the service day's last slot end + P-NOSHOW_GRACE become NO_SHOW, actor SYSTEM) | Integration | #53, #128 | Pass |
 | FR-44 |  | Should | T | UC-18 | US-35 | CAFIITK-60 (Done), CAFIITK-160 | TC-US35-AC1 | Integration | #57 | Pass |
 | FR-45 |  | Should | T, D | UC-19 | US-37 | CAFIITK-61 (Done), CAFIITK-162 | TC-US37-AC1…AC2 | E2E | #83 | Pass |
 | FR-46 |  | Should | D | UC-19 | US-37 | CAFIITK-62 (Done), CAFIITK-162 | TC-US37-AC1…AC2 | E2E | #83 | Pass |

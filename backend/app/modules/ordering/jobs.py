@@ -3,6 +3,7 @@
 from app.core import clock as clock
 from app.core.config import get_settings
 from app.db.session import get_sessionmaker
+from app.modules.ordering.auto_noshow import AutoNoShowService
 from app.modules.ordering.auto_prep import AutoPrepService
 from app.modules.ordering.outbox import OutboxDeliverer
 from app.modules.ordering.sweeper import HoldSweeper
@@ -12,6 +13,8 @@ from app.worker.jobs import Job
 
 # How often auto-prep checks for due slots; an order moves at most this late.
 AUTO_PREP_CHECK_S = 30
+# How often uncollected READY orders of finished days are closed (CAFIITK-210).
+AUTO_NO_SHOW_CHECK_S = 60
 # How often unacknowledged voids and refunds are sent again (FR-39).
 OUTBOX_RETRY_S = 10
 
@@ -19,6 +22,11 @@ OUTBOX_RETRY_S = 10
 def auto_start_preparation() -> None:
     with get_sessionmaker()() as session:
         AutoPrepService(session).start_due(clock.now())
+
+
+def close_uncollected_orders() -> None:
+    with get_sessionmaker()() as session:
+        AutoNoShowService(session).close_uncollected(clock.now())
 
 
 def sweep_expired_holds() -> None:
@@ -34,6 +42,7 @@ def deliver_payment_outbox() -> None:
 
 ORDERING_JOBS = [
     Job("auto-prep", auto_start_preparation, AUTO_PREP_CHECK_S),
+    Job("auto-no-show", close_uncollected_orders, AUTO_NO_SHOW_CHECK_S),
     # FR-34: also at start-up, so holds left by a crash are recovered at once (NFR-15).
     Job(
         "hold-sweeper",
