@@ -211,16 +211,68 @@ ThemeData buildCafTheme() {
       ),
       overlayColor: const WidgetStatePropertyAll(Colors.transparent),
     ),
+    // Chips are labels (status, counts) or choices (slots, categories): soft
+    // pills, never bordered boxes that read as buttons. A chosen one is ink.
     chipTheme: ChipThemeData(
-      backgroundColor: CafColors.surface,
-      selectedColor: CafColors.subtle,
-      side: const BorderSide(color: CafColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      labelStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+      backgroundColor: CafColors.subtle,
+      selectedColor: CafColors.ink,
+      disabledColor: CafColors.subtle,
+      checkmarkColor: Colors.white,
+      side: BorderSide.none,
+      shape: const StadiumBorder(),
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      labelStyle: text.labelMedium?.copyWith(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: CafColors.ink,
+      ),
+      secondaryLabelStyle: text.labelMedium?.copyWith(
+        fontSize: 13,
+        fontWeight: FontWeight.w600,
+        color: Colors.white,
+      ),
     ),
-    listTileTheme: const ListTileThemeData(
+    // List rows share the card titles' type: 15 px semibold, muted subtitle.
+    listTileTheme: ListTileThemeData(
       iconColor: CafColors.muted,
-      contentPadding: EdgeInsets.symmetric(horizontal: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      titleTextStyle: text.titleMedium,
+      subtitleTextStyle: text.bodyMedium?.copyWith(color: CafColors.muted),
+      leadingAndTrailingTextStyle: text.titleMedium?.copyWith(fontSize: 14),
+    ),
+    expansionTileTheme: const ExpansionTileThemeData(
+      shape: Border(),
+      collapsedShape: Border(),
+      iconColor: CafColors.muted,
+      collapsedIconColor: CafColors.muted,
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? Colors.white
+            : CafColors.faint,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? CafColors.ink
+            : CafColors.subtle,
+      ),
+      trackOutlineColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? Colors.transparent
+            : CafColors.border,
+      ),
+    ),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: SegmentedButton.styleFrom(
+        backgroundColor: CafColors.surface,
+        selectedBackgroundColor: CafColors.ink,
+        selectedForegroundColor: Colors.white,
+        foregroundColor: CafColors.ink,
+        side: const BorderSide(color: CafColors.border),
+        shape: rounded,
+        textStyle: text.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+      ),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
@@ -261,4 +313,27 @@ ThemeData buildCafTheme() {
       textStyle: text.bodySmall?.copyWith(color: Colors.white),
     ),
   );
+}
+
+/// Gives a [DropdownButton] the same white, bordered box as the text fields,
+/// in place of Material's underline. The dropdown itself is unchanged.
+class FieldFrame extends StatelessWidget {
+  const FieldFrame({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: CafColors.surface,
+        border: Border.all(color: CafColors.border),
+        borderRadius: BorderRadius.circular(_radius),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 14, right: 8),
+        child: DropdownButtonHideUnderline(child: child),
+      ),
+    );
+  }
 }

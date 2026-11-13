@@ -172,6 +172,9 @@ class _MenuItemTile extends ConsumerWidget {
                   ? categoryLabel(item.category)
                   : '${categoryLabel(item.category)} · ${item.description}',
               key: Key('details-${item.id}'),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             Row(
               children: [
