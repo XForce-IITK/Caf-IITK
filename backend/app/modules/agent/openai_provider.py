@@ -1,5 +1,6 @@
 """OpenAI Chat Completions adapter for the LLM client (native tool calling)."""
 
+import json
 import time
 from typing import Any
 
@@ -11,17 +12,28 @@ from app.modules.agent.llm import LLMProviderError, LLMRequest, LLMResponse, Mes
 def _message(message: Message) -> dict[str, Any]:
     out: dict[str, Any] = {"role": message.role, "content": message.content}
     if message.tool_calls:
-        out["tool_calls"] = [
-            {
-                "id": call.id,
-                "type": "function",
-                "function": {"name": call.name, "arguments": call.arguments},
-            }
-            for call in message.tool_calls
-        ]
+        out["tool_calls"] = [_tool_call(call) for call in message.tool_calls]
     if message.tool_call_id is not None:
         out["tool_call_id"] = message.tool_call_id
     return out
+
+
+def _tool_call(call: ToolCall) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "id": call.id,
+        "type": "function",
+        "function": {"name": call.name, "arguments": call.arguments},
+    }
+    if call.extra_content is not None:
+        # Gemini's OpenAI-compatible API rejects a later turn without the call's
+        # thought_signature, which it returns in this field.
+        out["extra_content"] = json.loads(call.extra_content)
+    return out
+
+
+def _extra_content(call: Any) -> str | None:
+    extra = (call.model_extra or {}).get("extra_content")
+    return None if extra is None else json.dumps(extra)
 
 
 class OpenAIProvider:
@@ -59,7 +71,12 @@ class OpenAIProvider:
             raise LLMProviderError("OpenAI returned no choices")
         reply = completion.choices[0].message
         tool_calls = tuple(
-            ToolCall(id=call.id, name=call.function.name, arguments=call.function.arguments)
+            ToolCall(
+                id=call.id,
+                name=call.function.name,
+                arguments=call.function.arguments,
+                extra_content=_extra_content(call),
+            )
             for call in reply.tool_calls or ()
             if call.type == "function"
         )
