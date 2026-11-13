@@ -44,4 +44,5 @@ def get_llm_client(session: Session) -> GuardedLLMClient:
         daily_cap=get_settings().agent_daily_cap,
         breaker=get_breaker(),
         cache=get_cache(),
+        retries=get_settings().llm_retries,
     )
