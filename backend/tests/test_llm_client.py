@@ -61,6 +61,8 @@ def make_client(
         daily_cap: int = 50,
         breaker: CircuitBreaker | None = None,
         cache: ResponseCache | None = None,
+        retries: int = 0,
+        sleeps: list[float] | None = None,
         now: Callable[[], datetime] = lambda: NOW,
     ) -> GuardedLLMClient:
         session = sessions()
@@ -71,7 +73,9 @@ def make_client(
             daily_cap=daily_cap,
             breaker=breaker or CircuitBreaker(),
             cache=cache if cache is not None else ResponseCache(),
+            retries=retries,
             now=now,
+            sleep=(sleeps if sleeps is not None else []).append,
         )
 
     yield make
@@ -208,6 +212,63 @@ def test_provider_failure_is_reported_as_unavailable(
 
     with pytest.raises(LLMUnavailableError, match="timeout"):
         llm.complete(REQUEST)
+
+
+def test_transient_failures_are_retried_with_backoff_and_each_attempt_is_budgeted(
+    make_client: Callable[..., GuardedLLMClient], engine: Engine
+) -> None:
+    # CAFIITK-209: Gemini answered 503 or timed out once, then worked.
+    breaker = CircuitBreaker(threshold=1)
+    sleeps: list[float] = []
+    provider = StubProvider(
+        [
+            LLMProviderError("503", transient=True),
+            LLMProviderError("timeout", transient=True),
+            reply("plan"),
+        ]
+    )
+    llm = make_client(provider, retries=2, sleeps=sleeps, breaker=breaker)
+
+    assert llm.complete(REQUEST).content == "plan"
+    assert sleeps == [1.0, 2.0]
+    assert _budget_used(engine) == 3
+    assert breaker.allow()
+
+
+def test_a_call_still_failing_after_its_retries_counts_once_towards_the_breaker(
+    make_client: Callable[..., GuardedLLMClient],
+) -> None:
+    breaker = CircuitBreaker(threshold=2)
+    provider = StubProvider([LLMProviderError("503", transient=True)] * 3)
+    llm = make_client(provider, retries=2, breaker=breaker)
+
+    with pytest.raises(LLMUnavailableError, match="503"):
+        llm.complete(REQUEST)
+    assert len(provider.requests) == 3
+    assert breaker.allow()  # one failed call, below the threshold of 2
+
+
+def test_a_permanent_failure_is_not_retried(
+    make_client: Callable[..., GuardedLLMClient], engine: Engine
+) -> None:
+    provider = StubProvider([LLMProviderError("bad key"), reply("never used")])
+    llm = make_client(provider, retries=2)
+
+    with pytest.raises(LLMUnavailableError, match="bad key"):
+        llm.complete(REQUEST)
+    assert len(provider.requests) == 1
+    assert _budget_used(engine) == 1
+
+
+def test_retries_stop_at_the_daily_cap(
+    make_client: Callable[..., GuardedLLMClient],
+) -> None:
+    provider = StubProvider([LLMProviderError("503", transient=True), reply("never used")])
+    llm = make_client(provider, retries=2, daily_cap=1)
+
+    with pytest.raises(LLMBudgetExceededError):
+        llm.complete(REQUEST)
+    assert len(provider.requests) == 1
 
 
 def test_the_breaker_opens_after_repeated_failures_and_recovers(
@@ -381,6 +442,25 @@ def test_gemini_thought_signature_is_sent_back_with_its_tool_call() -> None:
     messages = seen[1]["messages"]
     assert isinstance(messages, list)
     assert messages[0]["tool_calls"][0]["extra_content"] == extra
+
+
+@pytest.mark.parametrize(
+    ("handler", "transient"),
+    [
+        (lambda request: httpx.Response(503, json={"error": {"message": "overloaded"}}), True),
+        (lambda request: httpx.Response(429, json={"error": {"message": "slow down"}}), True),
+        (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("slow", request=request)), True),
+        (lambda request: httpx.Response(401, json={"error": {"message": "bad key"}}), False),
+        (lambda request: httpx.Response(400, json={"error": {"message": "bad request"}}), False),
+    ],
+    ids=["503", "429", "timeout", "401", "400"],
+)
+def test_openai_failures_are_marked_transient_only_when_a_retry_can_help(
+    handler: Callable[[httpx.Request], httpx.Response], transient: bool
+) -> None:
+    with pytest.raises(LLMProviderError) as raised:
+        _openai(handler).complete(REQUEST)
+    assert raised.value.transient is transient
 
 
 @pytest.mark.parametrize(

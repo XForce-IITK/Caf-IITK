@@ -10,6 +10,10 @@
 4. the daily budget P-AGENT_DAILY_CAP, counted in `rate_limits` so it holds across
    processes (NFR-13, NFR-42).
 
+A transient provider failure (timeout, connection error, 429 or 5xx) is retried up
+to `retries` times with a short backoff; each attempt counts against the daily
+budget, and only a call that fails after its retries counts towards the breaker.
+
 Any failure surfaces as `LLMUnavailableError`; the agent then falls back to the
 heuristic planner (FR-59). Tool-call arguments are returned as the raw string the
 model produced, so malformed output reaches the validator (FR-58) instead of
@@ -83,6 +87,11 @@ class LLMResponse:
 
 class LLMProviderError(Exception):
     """The provider failed: timeout, network error, error status or unusable reply."""
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        super().__init__(message)
+        # True when the same request may succeed if sent again (CAFIITK-209).
+        self.transient = transient
 
 
 class LLMUnavailableError(Exception):
@@ -202,14 +211,20 @@ class GuardedLLMClient:
         daily_cap: int,
         breaker: CircuitBreaker,
         cache: ResponseCache,
+        retries: int = 0,
+        backoff_s: float = 1.0,
         now: Callable[[], datetime] = clock.now,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._provider = provider
         self._session = session
         self._daily_cap = daily_cap
         self._breaker = breaker
         self._cache = cache
+        self._retries = retries
+        self._backoff_s = backoff_s
         self._now = now
+        self._sleep = sleep
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         if self._session.in_transaction():
@@ -223,13 +238,20 @@ class GuardedLLMClient:
             return replace(cached, cached=True, latency_ms=0)
         if not self._breaker.allow():
             raise LLMUnavailableError("LLM circuit breaker is open")
-        if not consume_daily_budget(self._session, self._daily_cap, now):
-            raise LLMBudgetExceededError(f"daily LLM cap of {self._daily_cap} reached")
-        try:
-            response = self._provider.complete(request)
-        except LLMProviderError as exc:
-            self._breaker.record_failure()
-            raise LLMUnavailableError(str(exc)) from exc
+        attempt = 0
+        while True:
+            if not consume_daily_budget(self._session, self._daily_cap, now):
+                raise LLMBudgetExceededError(f"daily LLM cap of {self._daily_cap} reached")
+            try:
+                response = self._provider.complete(request)
+                break
+            except LLMProviderError as exc:
+                if not exc.transient or attempt >= self._retries:
+                    self._breaker.record_failure()
+                    raise LLMUnavailableError(str(exc)) from exc
+            # Backoff of 1x, 2x, 4x ... backoff_s; no transaction is open here (NFR-6).
+            self._sleep(self._backoff_s * 2**attempt)
+            attempt += 1
         self._breaker.record_success()
         self._cache.put(now.date(), key, response)
         return response

@@ -6,8 +6,9 @@
    P-AGENT_RUN_TIMEOUT; every LLM request and tool call is logged (FR-62).
 4. Insert the staged proposals as PENDING (caf_agent), then record the run.
 
-If an earlier run of the same service date planned from identical tool data, its
-result is reused without an LLM request (FR-64, SD-6 step 3). If the LLM cannot
+If an earlier run of the same service date was planned by the LLM from identical
+tool data, its result is reused without an LLM request (FR-64, SD-6 step 3); a
+heuristic fallback is not reused, so the next run tries the LLM again. If the LLM cannot
 be used (unreachable, too slow, breaker open, daily cap reached) or the run
 exceeds its limits, the heuristic planner drafts the report's proposals instead
 and the run is marked HEURISTIC (FR-59, SD-6 steps 4 and 17-18).
@@ -111,7 +112,7 @@ class PlanningOrchestrator:
             repl_max = int(self.runs.get_setting("P-REPL_MAX"))
             earlier = self.runs.reusable_run(digest, service_date, exclude=run_id)
             if earlier is not None:
-                # FR-64: same tool data in the same window; its proposals are still the plan.
+                # FR-64: same tool data in the same window; its LLM plan's proposals still stand.
                 self.runs.finish(
                     run_id,
                     AgentRunStatus.SUCCEEDED,

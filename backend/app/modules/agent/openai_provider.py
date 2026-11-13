@@ -36,10 +36,20 @@ def _extra_content(call: Any) -> str | None:
     return None if extra is None else json.dumps(extra)
 
 
+def _transient(exc: openai.OpenAIError) -> bool:
+    """A timeout, connection error, 408, 429 or 5xx: the same request may succeed later."""
+    if isinstance(exc, openai.APIConnectionError):  # includes APITimeoutError
+        return True
+    if isinstance(exc, openai.APIStatusError):
+        return exc.status_code in (408, 429) or exc.status_code >= 500
+    return False
+
+
 class OpenAIProvider:
     def __init__(self, client: openai.OpenAI, model: str) -> None:
-        # The client carries the API key and P-LLM_TIMEOUT; retries are disabled so the
-        # timeout bounds the whole call and failures reach the circuit breaker.
+        # The client carries the API key and P-LLM_TIMEOUT; the SDK's retries are disabled
+        # so the timeout bounds each attempt, and GuardedLLMClient retries transient
+        # failures itself, counting each attempt against the daily cap.
         self._client = client
         self.model = model
 
@@ -65,7 +75,9 @@ class OpenAIProvider:
             completion = self._client.chat.completions.create(**kwargs)
         except openai.OpenAIError as exc:
             # The exception text never contains the API key; only the class and status are kept.
-            raise LLMProviderError(f"OpenAI request failed: {type(exc).__name__}") from exc
+            raise LLMProviderError(
+                f"OpenAI request failed: {type(exc).__name__}", transient=_transient(exc)
+            ) from exc
         latency_ms = int((time.monotonic() - started) * 1000)
         if not completion.choices:
             raise LLMProviderError("OpenAI returned no choices")

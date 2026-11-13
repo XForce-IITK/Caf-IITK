@@ -42,6 +42,7 @@ from app.modules.agent.llm import (
     DAILY_BUDGET_SUBJECT,
     CircuitBreaker,
     GuardedLLMClient,
+    LLMProviderError,
     LLMResponse,
     ResponseCache,
     ToolCall,
@@ -865,6 +866,24 @@ def test_tc_us43_ac3_identical_tool_data_reuses_the_earlier_result(
     assert second["source"] == "LLM"
     assert _proposals(engine, second_id) == []  # the first run's proposals stand
     assert len(_proposals(engine, first_id)) == 1
+
+
+def test_a_heuristic_fallback_is_not_reused_and_the_llm_is_tried_again(
+    kitchen: Kitchen, run_with: Callable[..., Any], engine: Engine
+) -> None:
+    # CAFIITK-209: a run that fell back on a provider error must not stand for
+    # every later run with the same data.
+    first_id, _, _ = run_with(LLMProviderError("OpenAI request failed: InternalServerError"))
+    assert _run(engine, first_id)["source"] == "HEURISTIC"
+
+    second_id, status, stub = run_with(reply("planned by the LLM"), now=_at(11, 40))
+
+    assert status is AgentRunStatus.SUCCEEDED
+    assert len(stub.requests) == 1
+    second = _run(engine, second_id)
+    assert second["source"] == "LLM"
+    assert "reused_from" not in second["report"]
+    assert second["report"]["narrative"] == "planned by the LLM"
 
 
 def test_changed_tool_data_is_planned_again(

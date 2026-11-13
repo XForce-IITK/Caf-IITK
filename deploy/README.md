@@ -132,7 +132,11 @@ Metrics are only on the instance: `ssh -L 8000:127.0.0.1:8000 ...` and open
 
 ```sh
 git pull && docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml restart nginx
 ```
+
+nginx resolves `api` only when it starts. A rebuild gives the new caf-api container a
+new address, so without the restart every API request fails with 502.
 
 Rebuild and copy the client (step 6) when `app/` changed.
 
