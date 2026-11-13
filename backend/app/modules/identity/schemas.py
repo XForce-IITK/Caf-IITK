@@ -63,12 +63,16 @@ class LoginRequest(BaseModel):
 class RefreshRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    refresh_token: Annotated[str, Field(min_length=1, max_length=256)]
+    # CAFIITK-207: the web client leaves this out; its refresh token travels in
+    # an HttpOnly cookie instead (see app/modules/identity/cookie.py).
+    refresh_token: Annotated[str, Field(min_length=1, max_length=256)] | None = None
 
 
 class TokenPair(BaseModel):
     access_token: str
-    refresh_token: str
+    # Null when the refresh token was set as an HttpOnly cookie (CAFIITK-207), so
+    # page scripts never see it.
+    refresh_token: str | None = None
     token_type: str = "bearer"
     expires_in: int  # access-token lifetime in seconds
     # The client opens this role's dashboard (FR-5).

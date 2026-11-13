@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:caf_app/api/api.dart';
+import 'package:caf_app/auth/token_store.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,12 +98,38 @@ const menuUrl = '/api/v1/menu';
 const slotsUrl = '/api/v1/slots';
 const quotesUrl = '/api/v1/quotes';
 
+/// Keeps the refresh token in memory, like secure storage (or, with
+/// [usesCookie], like the web, where the browser holds it in a cookie).
+class MemoryTokenStore implements RefreshTokenStore {
+  MemoryTokenStore({this.token, this.usesCookie = false});
+
+  String? token;
+
+  @override
+  final bool usesCookie;
+
+  @override
+  Future<String?> read() async => token;
+
+  @override
+  Future<void> write(String value) async => token = value;
+
+  @override
+  Future<void> clear() async => token = null;
+}
+
 /// A provider container whose API calls go to [server]. Retry waits are
-/// recorded in [delays] instead of being slept.
-ProviderContainer containerFor(FakeServer server, {List<Duration>? delays}) {
+/// recorded in [delays] instead of being slept. The refresh token is kept in
+/// [store] (an empty one by default, so the app starts logged out).
+ProviderContainer containerFor(
+  FakeServer server, {
+  List<Duration>? delays,
+  RefreshTokenStore? store,
+}) {
   final container = ProviderContainer(
     overrides: [
       retryDelayProvider.overrideWithValue((delay) async => delays?.add(delay)),
+      refreshTokenStoreProvider.overrideWithValue(store ?? MemoryTokenStore()),
     ],
   );
   addTearDown(container.dispose);

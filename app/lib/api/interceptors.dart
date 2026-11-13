@@ -21,6 +21,25 @@ class RequestIdInterceptor extends Interceptor {
   }
 }
 
+/// CAFIITK-207, web only: auth requests ask the server to keep the refresh
+/// token in an HttpOnly cookie, and let the browser send and store that cookie
+/// when the API is on another origin (local development).
+class TokenTransportInterceptor extends Interceptor {
+  TokenTransportInterceptor({required this.usesCookie});
+
+  static const header = 'X-Token-Transport';
+  final bool Function() usesCookie;
+
+  @override
+  void onRequest(RequestOptions options, RequestInterceptorHandler handler) {
+    if (usesCookie() && options.path.startsWith(_authPrefix)) {
+      options.headers[header] = 'cookie';
+      options.extra['withCredentials'] = true;
+    }
+    handler.next(options);
+  }
+}
+
 /// Attaches the access token and, on a 401, refreshes it once and repeats the
 /// request. A failed refresh ends the session.
 class AuthInterceptor extends Interceptor {
