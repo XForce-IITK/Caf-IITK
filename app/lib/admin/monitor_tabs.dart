@@ -7,6 +7,7 @@ import '../api/api.dart';
 import '../dashboards/common.dart';
 import '../student/format.dart';
 import '../student/order_tracking.dart' show pollIntervalProvider;
+import '../theme.dart';
 import 'admin_state.dart';
 
 /// What the Administrator filters today's orders by (FR-45). Null means any.
@@ -96,44 +97,48 @@ class _OrdersTabState extends ConsumerState<OrdersTab> {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            DropdownButton<String?>(
-              key: const Key('filter-slot'),
-              value: filter.slotId,
-              hint: const Text('Any slot'),
-              onChanged: (slotId) => _set((
-                slotId: slotId,
-                status: filter.status,
-                student: filter.student,
-              )),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('Any slot')),
-                for (final slot in slots ?? const <SlotAvailabilityOut>[])
-                  DropdownMenuItem(
-                    key: Key('filter-slot-${slot.id}'),
-                    value: slot.id,
-                    child: Text(formatSlot(slot.startsAt, slot.endsAt)),
-                  ),
-              ],
-            ),
-            DropdownButton<OrderStatus?>(
-              key: const Key('filter-status'),
-              value: filter.status,
-              hint: const Text('Any state'),
-              onChanged: (status) => _set((
-                slotId: filter.slotId,
-                status: status,
-                student: filter.student,
-              )),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('Any state')),
-                for (final status in OrderStatus.values)
-                  if (status != OrderStatus.$unknown)
+            FieldFrame(
+              child: DropdownButton<String?>(
+                key: const Key('filter-slot'),
+                value: filter.slotId,
+                hint: const Text('Any slot'),
+                onChanged: (slotId) => _set((
+                  slotId: slotId,
+                  status: filter.status,
+                  student: filter.student,
+                )),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Any slot')),
+                  for (final slot in slots ?? const <SlotAvailabilityOut>[])
                     DropdownMenuItem(
-                      key: Key('filter-status-${status.json}'),
-                      value: status,
-                      child: Text(orderStatusLabel(status)),
+                      key: Key('filter-slot-${slot.id}'),
+                      value: slot.id,
+                      child: Text(formatSlot(slot.startsAt, slot.endsAt)),
                     ),
-              ],
+                ],
+              ),
+            ),
+            FieldFrame(
+              child: DropdownButton<OrderStatus?>(
+                key: const Key('filter-status'),
+                value: filter.status,
+                hint: const Text('Any state'),
+                onChanged: (status) => _set((
+                  slotId: filter.slotId,
+                  status: status,
+                  student: filter.student,
+                )),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Any state')),
+                  for (final status in OrderStatus.values)
+                    if (status != OrderStatus.$unknown)
+                      DropdownMenuItem(
+                        key: Key('filter-status-${status.json}'),
+                        value: status,
+                        child: Text(orderStatusLabel(status)),
+                      ),
+                ],
+              ),
             ),
             SizedBox(
               width: 260,
