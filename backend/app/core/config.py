@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_base_url: str | None = None
     llm_timeout_s: float = 20.0  # P-LLM_TIMEOUT
+    # Retries of a timed-out, rate-limited or 5xx LLM request (CAFIITK-209).
+    llm_retries: int = 2
     agent_daily_cap: int = 50  # P-AGENT_DAILY_CAP
     agent_max_calls: int = 20  # P-AGENT_MAX_CALLS, tool calls per run
     agent_run_timeout_s: float = 60.0  # P-AGENT_RUN_TIMEOUT
