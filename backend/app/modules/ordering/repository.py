@@ -138,6 +138,24 @@ class OrderRepository:
             )
         )
 
+    def ready_orders_of_days_ended_by(self, cutoff: datetime) -> list[uuid.UUID]:
+        """READY orders whose service day's last slot ended at or before `cutoff`, in
+        lock order (NFR-4)."""
+        day_slot = aliased(Slot)
+        day_end = (
+            select(func.max(day_slot.ends_at))
+            .where(day_slot.service_date == Slot.service_date)
+            .scalar_subquery()
+        )
+        return list(
+            self.session.scalars(
+                select(Order.id)
+                .join(Slot, Slot.id == Order.slot_id)
+                .where(Order.status == OrderStatus.READY, day_end <= cutoff)
+                .order_by(Order.id)
+            )
+        )
+
     def find_order(self, order_id: uuid.UUID) -> Order | None:
         return self.session.scalars(
             select(Order).where(Order.id == order_id).execution_options(populate_existing=True)
