@@ -49,7 +49,10 @@ abstract class IdentityClient {
     @Path('user_id') required String userId,
   });
 
-  /// Login
+  /// Login.
+  ///
+  /// With `X-Token-Transport: cookie` the refresh token is set as an HttpOnly.
+  /// cookie and left out of the body (CAFIITK-207).
   @POST('/api/v1/auth/login')
   Future<TokenPair> login({@Body() required LoginRequest body});
 
@@ -61,7 +64,10 @@ abstract class IdentityClient {
   @GET('/api/v1/auth/me')
   Future<UserOut> me();
 
-  /// Refresh
+  /// Refresh.
+  ///
+  /// Rotate the refresh token from the body, or from the cookie when the request.
+  /// carries `X-Token-Transport: cookie` (CAFIITK-207).
   @POST('/api/v1/auth/refresh')
   Future<TokenPair> refresh({@Body() required RefreshRequest body});
 

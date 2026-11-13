@@ -5,6 +5,7 @@ import '../api/api.dart';
 import '../api/errors.dart';
 import '../dashboards/common.dart';
 import '../student/format.dart';
+import '../theme.dart';
 import 'admin_state.dart';
 
 /// FR-8, FR-11, FR-14: add items, set today's portions, and flag an item
@@ -22,6 +23,7 @@ class ItemsTab extends ConsumerWidget {
           value: ref.watch(adminMenuProvider),
           onRetry: () => ref.invalidate(adminMenuProvider),
           builder: (menu) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (menu.items.isEmpty) const Text('No items on the menu yet.'),
               for (final item in menu.items)
@@ -157,7 +159,7 @@ class _ItemRowState extends ConsumerState<_ItemRow> {
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 SizedBox(
-                  width: 160,
+                  width: 200,
                   child: TextField(
                     key: Key('portions-$id'),
                     controller: _total,
@@ -351,18 +353,20 @@ class _OnboardFormState extends ConsumerState<_OnboardForm> {
               ),
             ),
             const SizedBox(width: 16),
-            DropdownButton<ItemCategory>(
-              key: const Key('new-item-category'),
-              value: _category,
-              onChanged: (value) => setState(() => _category = value!),
-              items: [
-                for (final category in ItemCategory.values)
-                  if (category != ItemCategory.$unknown)
-                    DropdownMenuItem(
-                      value: category,
-                      child: Text(categoryLabel(category)),
-                    ),
-              ],
+            FieldFrame(
+              child: DropdownButton<ItemCategory>(
+                key: const Key('new-item-category'),
+                value: _category,
+                onChanged: (value) => setState(() => _category = value!),
+                items: [
+                  for (final category in ItemCategory.values)
+                    if (category != ItemCategory.$unknown)
+                      DropdownMenuItem(
+                        value: category,
+                        child: Text(categoryLabel(category)),
+                      ),
+                ],
+              ),
             ),
           ],
         ),

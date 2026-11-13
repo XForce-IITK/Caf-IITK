@@ -13,9 +13,9 @@ class TokenPair {
   const TokenPair({
     required this.accessToken,
     required this.expiresIn,
-    required this.refreshToken,
     required this.role,
     this.tokenType = 'bearer',
+    this.refreshToken,
   });
 
   factory TokenPair.fromJson(Map<String, Object?> json) =>
@@ -26,7 +26,7 @@ class TokenPair {
   @JsonKey(name: 'expires_in')
   final int expiresIn;
   @JsonKey(name: 'refresh_token')
-  final String refreshToken;
+  final String? refreshToken;
   final Role role;
   @JsonKey(name: 'token_type')
   final String tokenType;

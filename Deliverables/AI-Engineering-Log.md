@@ -54,7 +54,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E42 | Sprint 2 holds 73 points against 43 closed in Sprint 1, on AI-drafted estimates | **Planning risk** | Summing the estimates | Flagged in the sprint plan; reviewed and accepted by the team |
 | E43 | While checking that the tests catch a broken route guard, the AI reverted an uncommitted file with a version-control command | Tooling slip | The next check found the old file | Rewritten from the same source; analysis, tests and coverage rerun |
 | E44 | Formatting the whole client also reformatted the generated code, which would have failed the up-to-date check in CI | Tooling defect | Reading the commit's file list | The generation script now formats its own output |
-| E45 | Tokens are kept in memory only, so reloading the page logs the user out; the SRS does not say where the client should keep them | Specification gap | Writing the session code | Flagged in the PR; the team accepted keeping tokens in memory only |
+| E45 | Tokens are kept in memory only, so reloading the page logs the user out; the SRS does not say where the client should keep them | Specification gap | Writing the session code | Flagged in the PR; the team accepted keeping tokens in memory only. **Decision changed after testing (CAFIITK-207):** the refresh token moved to an HttpOnly cookie on the web and to secure storage on Android, so a reload keeps the user logged in |
 | E46 | The Sprint 2 plan assumed the agent tables, the agent's read views and its restricted database role already existed; no issue owned them, and three issues depended on them | **Planning gap** | Comparing the plan with the code | Built first, as its own PR under CAFIITK-164, with the proposal payload agreed in it |
 | E47 | The check that the scheduled planning run had already happened that day compared a timestamp set by the database clock with the application clock | Defect | Failing acceptance test | The run's start time is now set from the application clock |
 | E48 | The SRS makes disable and replenishment proposals expire when the service window opens, so one drafted during service would be expired from the start | Specification gap | Writing the agent's tools | During service the agent refuses them with the reason; flagged in the PR; team decision on the SRS pending |
@@ -131,6 +131,7 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 | E119 | The AI wrote "I reviewed…" in the author's voice in #93 (the diff, the limits, the locking) and #94 (the reference against FR-24) without being told any such review took place. This repeats E101 | Misattribution | Re-reading the PRs while writing these entries | Pending: the author to confirm or correct both descriptions |
 | E120 | A CI run on the release PR showed as cancelled. The AI re-ran it, not seeing that a newer run for the same PR was already live. The workflow cancels older runs in the same group, so the re-run cancelled the live run, and the release checks had to run again | Process error | Checking every run listed for the PR after the second cancellation | The AI cancelled its own re-run and let the checks run again on the next update to `develop`. They passed |
 | E121 | Drafts of the D3 reports contained claims not taken from the source: a 10 s payment timeout (the test uses 0.5 s), two wrong FR numbers, sprint issue counts, per-area test totals, "Unicode" fuzz values that the fuzz list does not contain, "two thirds" where the data gives three quarters, and two guessed reasons for uncovered code | Unverified claims | The AI checked each claim against the test files, the coverage output, Jira and GitHub before commit | All corrected before the PR was opened |
+| E122 | Two defects in the first CAFIITK-207 version. The start-up restore replaced a session that already existed when its refresh failed, logging the user out. A refresh with no token returned 401, which the access matrix reads as "login required" on a public route (it had been 422) | Implementation defect | 114 client tests and one security-campaign test failed, before the PR | Restore leaves an existing session alone; a missing token is 422 again, and only a bad token is 401 |
 
 ---
 
@@ -1078,3 +1079,26 @@ Krishna Kumayu (230576) · Kshitij Gupta (230581) · Rudransh Verma (230881) · 
 - **Team decision:** the author chose one file per brief item, and chose to state that the AWS load run was not done rather than wait for one.
 - **What changed:** checking each claim against its source before commit corrected several drafted figures (E121). One merged PR turned out to have no approval of its own: it had been stacked on another PR's branch. The project report says so instead of claiming every PR was reviewed.
 - **Team evaluation:** accepted; the PR was approved by a teammate (Rudransh) with no change requests, then merged.
+
+### Keep the session across a reload (Bug CAFIITK-207; NFR-19, NFR-27)
+
+- **Found by:** the author, testing the deployed app before the demo. Every page reload, and every restart of the Android app, sent the user back to the login screen, including from a deep link such as an order page. This was the trade-off the team had accepted in E45 and the threat model's R2.
+- **Team decision:** after testing, the team decided the usability cost was too high. It asked for the usual approach that keeps the security benefit while fixing usability.
+- **AI produced:**
+  - **Access token:** unchanged. It stays in memory and lasts 15 minutes.
+  - **Web:**
+    - The client sends `X-Token-Transport: cookie` on login, refresh and logout. The server then sets the refresh token as a cookie scripts cannot read: HttpOnly, SameSite=Strict, Secure in production, limited to `/api/v1/auth`, 7 days. It leaves the token out of the response body.
+    - The cookie counts only together with that header, which a cross-site page cannot add without a CORS preflight. CORS now allows credentials for the client's origin only.
+  - **Android:** the refresh token is kept in Keystore-backed secure storage.
+  - **Other clients:** clients that do not send the header get the token in the body as before.
+  - **Start-up:**
+    - The client restores the session with one refresh, showing a loading screen meanwhile.
+    - It then returns the user to the page they were on, if their role may see it. Only a path inside the app is accepted as the return address.
+  - **Unchanged:** rotation and reuse detection (T3). Logout and a failed refresh clear the cookie or the stored token.
+  - Tests: 10 backend tests, 11 client tests, and the regenerated client.
+- **What changed during the work:** two defects in the first version (E122).
+- **How it was checked:**
+  - Full backend and client suites, client coverage 96.9 %, and the web build.
+  - The cookie flow by hand against the local stack: login, a refresh using only the cookie, the old token refused after rotation, and logout clearing the cookie.
+- **Documents:** the threat model's T3, R2 and defect list, and E45 above.
+- **Team evaluation:** pending review of the PR.
